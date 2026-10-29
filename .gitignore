@@ -1,0 +1,6 @@
+# Ignore all data files and PyG processed graphs
+data/
+diffusion_sim/*.csv
+models/saved_weights/*.pth
+__pycache__/
+*.pyc
