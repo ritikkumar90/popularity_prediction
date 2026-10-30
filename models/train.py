@@ -94,4 +94,4 @@ if __name__ == "__main__":
     os.makedirs(WEIGHTS_DIR, exist_ok=True)
     
     # Reduced epochs to 10 for standard mini-batch training speed
-    train_hgt(DATA_DIR, WEIGHTS_DIR, epochs=10)
+    train_hgt(DATA_DIR, WEIGHTS_DIR, epochs=5)

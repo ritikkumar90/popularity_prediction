@@ -7,13 +7,13 @@ import numpy as np
 sys.path.append('/content/drive/MyDrive/Colab Notebooks/PopularityPrediction')
 from diffusion_sim.ic_model import build_social_graph, independent_cascade
 
-def generate_expected_spread(data_dir, output_dir, num_test_photos=100, num_simulations=50):
+def generate_expected_spread(data_dir, output_dir, num_test_photos, num_simulations):
     print("1. Building Frozen Social Graph...")
     graph = build_social_graph(data_dir)
     
     print("2. Loading favorites data...")
     fav_path = os.path.join(data_dir, 'raw', 'flickr-all-photo-favorite-markings.txt.gz')
-    df_fav = pd.read_csv(fav_path, sep=r'\t| ', engine='python', header=None, nrows=500000)
+    df_fav = pd.read_csv(fav_path, sep=r'\t| ', engine='python', header=None, nrows=100000)
     df_fav.columns = ['user_id', 'photo_id', 'timestamp']
     
     photo_counts = df_fav['photo_id'].value_counts()
@@ -31,7 +31,7 @@ def generate_expected_spread(data_dir, output_dir, num_test_photos=100, num_simu
         # Run the simulation multiple times to find the "Expected" spread
         simulated_spreads = []
         for _ in range(num_simulations):
-            sim_popularity, _ = independent_cascade(graph, seeds, prob=0.05)
+            sim_popularity, _ = independent_cascade(graph, seeds, prob=0.015)
             simulated_spreads.append(sim_popularity)
             
         # The expected spread is the average of all the simulation runs
@@ -59,4 +59,4 @@ if __name__ == "__main__":
     DATA_DIR = '/content/drive/MyDrive/Colab Notebooks/PopularityPrediction/data'
     OUTPUT_DIR = '/content/drive/MyDrive/Colab Notebooks/PopularityPrediction/diffusion_sim'
     
-    generate_expected_spread(DATA_DIR, OUTPUT_DIR, num_test_photos=100, num_simulations=50)
+    generate_expected_spread(DATA_DIR, OUTPUT_DIR, num_test_photos=10, num_simulations=100)

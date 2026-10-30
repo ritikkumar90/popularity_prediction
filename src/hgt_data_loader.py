@@ -16,7 +16,7 @@ def load_hgt_graph(data_dir):
     df_fav = pd.read_csv(train_fav_path, usecols=['user_id', 'photo_id'])
     
     # 3. Load Photo Uploads (User uploads Photo) from raw/
-    photo_path = os.path.join(data_dir, 'raw', 'flickr-all-photos.txt.gz')
+    photo_path = os.path.join(data_dir, 'raw_mini', 'flickr-all-photos.txt.gz')
     df_photos = pd.read_csv(photo_path, sep=r'\t| ', engine='python', header=None, usecols=[0, 1])
     df_photos.columns = ['photo_id', 'uploader']
     

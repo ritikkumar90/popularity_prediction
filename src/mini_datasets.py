@@ -1,7 +1,7 @@
 import pandas as pd
 import os
 
-def create_mini_data(data_dir, mini_dir, num_favs=5000):
+def create_mini_data(data_dir, mini_dir, num_favs=100000):
     os.makedirs(mini_dir, exist_ok=True)
     raw_dir = os.path.join(data_dir, 'raw')
     

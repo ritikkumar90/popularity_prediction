@@ -6,7 +6,7 @@ from collections import defaultdict
 
 def build_social_graph(data_dir):
     """Loads the user-user directed graph into an adjacency list."""
-    growth_path = os.path.join(data_dir, 'raw', 'flickr-growth.txt.gz')
+    growth_path = os.path.join(data_dir, 'raw_mini', 'flickr-growth.txt.gz')
     df_growth = pd.read_csv(growth_path, sep=r'\t| ', engine='python', header=None, usecols=[0, 1])
     df_growth.columns = ['follower', 'followed']
     
@@ -17,7 +17,7 @@ def build_social_graph(data_dir):
         
     return graph
 
-def independent_cascade(graph, seed_nodes, prob=0.05):
+def independent_cascade(graph, seed_nodes, prob=0.005):
     """Simulates the spread of a photo through the social graph."""
     activated = set(seed_nodes)
     newly_activated = list(seed_nodes)
