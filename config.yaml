@@ -1,0 +1,116 @@
+run:
+  profile: mini
+  seed: 42
+  base_dir: "."
+  output_dir: "outputs"
+  cache_dir: "cache"
+
+dataset:
+  name: flickr
+
+datasets:
+  digg:
+    paths:
+      votes: "data/raw/digg/digg_votes1.csv"
+      edges: "data/raw/digg/digg_friends.csv"
+      owners: null
+    read_csv_kwargs: {header: null, sep: ","}
+    columns:
+      votes: [time, user, post]
+      edges: [mutual, created_at, user, friend]
+    edge_source: friend
+    edge_target: user
+    edge_time_available: true
+    author_rule: first_event
+    post_definition: column
+    time_format: unix_seconds
+    time:
+      observation_window: {mode: fixed, value: 2, unit: hours}
+      horizon: {value: 24, unit: hours}
+      min_observed_events: 5
+
+  flickr:
+    paths:
+      votes: "data/raw/flickr/flickr-all-photo-favorite-markings.txt.gz"
+      edges: "data/raw/flickr/flickr-growth.txt.gz"
+      owners: null
+    read_csv_kwargs: {header: null, sep: "\\s+"}
+    columns:
+      votes: [user, post, time]
+      edges: [follower, followed, created_at]
+    edge_source: followed
+    edge_target: follower
+    edge_time_available: true
+    author_rule: first_event
+    post_definition: column
+    time_format: "date:%Y-%m-%d"
+    time:
+      observation_window: {mode: fixed, value: 90, unit: days}
+      horizon: {value: 180, unit: days}
+      min_observed_events: 3
+
+  higgs:
+    paths: 
+      votes: "data/raw/higgs/higgs-retweet_network.edgelist.gz"
+      edges: "data/raw/higgs/higgs-social_network.edgelist.gz"
+      owners: null
+    read_csv_kwargs: {header: null, sep: "\\s+"}
+    columns:
+      votes: [source_user, user, time, interaction]
+      edges: [follower, followed]
+    edge_source: followed
+    edge_target: follower
+    edge_time_available: false
+    author_rule: first_event
+    post_definition: derived
+    time_format: unix_seconds
+    time:
+      observation_window: {mode: fixed, value: 2, unit: hours}
+      horizon: {value: 24, unit: hours}
+      min_observed_events: 5
+
+time:
+  observation_window: {mode: fixed, value: 10, unit: days}
+  horizon: {value: 30, unit: days}
+  split: {mode: quantile, train: 0.7, val: 0.15, test: 0.15}
+  purge_straddling_posts: true
+  drop_if_horizon_exceeds_data_end: true
+  min_observed_events: 5
+
+sampling:
+  n_posts: null
+  max_users: null
+  keep_time_order: true
+  neighborhood_hops: 2
+
+fit:
+  p_estimator: backoff
+  smoothing: {alpha: 1.0, beta: 2.0}
+  delay_distribution: exponential
+  scale_factor: {enabled: true, fit_on: val}
+  external_arrival: {enabled: false}
+
+simulate:
+  n_runs: 500
+  start_active_set: observed
+  use_common_random_numbers: true
+  max_cascade_size: 200000
+  recency_weighting: {enabled: false, half_life: {value: 2, unit: days}}
+
+im:
+  k_list: [1, 2, 3]
+  candidate_hops: 2
+  candidate_top_n: 300
+  selection_runs: 5
+  algorithm: celf
+
+eval:
+  metrics: [msle, spearman, mape]
+  report_mean_of_k: true
+
+profiles:
+  mini:
+    sampling: {n_posts: 5, max_users: 20000}
+    simulate: {n_runs: 100}
+    im: {candidate_top_n: 50, selection_runs: 50}
+  full: {}
