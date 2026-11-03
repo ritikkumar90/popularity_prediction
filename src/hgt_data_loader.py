@@ -1,71 +1,93 @@
+import os
+import numpy as np
 import pandas as pd
 import torch
+import torch_geometric.transforms as T
 from torch_geometric.data import HeteroData
-import os
+
+SPLITS = ['train', 'val', 'test']
+BINS_H = [1, 6, 24, 72, 168]  # hours since a photo's first favorite
+
+def read_cols(path, cols, names):
+    df = pd.read_csv(path, sep=r'\s+', header=None, usecols=cols, dtype=np.int64)
+    df.columns = names
+    return df
+
+def idx(ids, col):
+    v = col.to_numpy()
+    pos = np.searchsorted(ids, v)
+    assert (ids[pos.clip(max=len(ids) - 1)] == v).all(), "ID not in mapping"
+    return torch.from_numpy(pos)
 
 def load_hgt_graph(data_dir):
-    print("Loading datasets...")
-    
-    # 1. Load Social Graph (User follows User) from raw/
-    growth_path = os.path.join(data_dir, 'raw_mini', 'flickr-growth.txt.gz')
-    df_growth = pd.read_csv(growth_path, sep=r'\t| ', engine='python', header=None, usecols=[0, 1])
-    df_growth.columns = ['follower', 'followed']
-    
-    # 2. Load Train Favorites (User favorites Photo) from splits/
-    train_fav_path = os.path.join(data_dir, 'splits', 'train_favorites.csv')
-    df_fav = pd.read_csv(train_fav_path, usecols=['user_id', 'photo_id'])
-    
-    # 3. Load Photo Uploads (User uploads Photo) from raw/
-    photo_path = os.path.join(data_dir, 'raw_mini', 'flickr-all-photos.txt.gz')
-    df_photos = pd.read_csv(photo_path, sep=r'\t| ', engine='python', header=None, usecols=[0, 1])
-    df_photos.columns = ['photo_id', 'uploader']
-    
-    print("Creating ID mappings...")
-    # Extract unique IDs across all files
-    unique_users = set(df_growth['follower']).union(set(df_growth['followed'])) \
-                   .union(set(df_fav['user_id'])).union(set(df_photos['uploader']))
-    unique_photos = set(df_fav['photo_id']).union(set(df_photos['photo_id']))
-    
-    # Create mapping dictionaries (Raw ID -> Contiguous Index 0, 1, 2...)
-    user_mapping = {raw_id: i for i, raw_id in enumerate(unique_users)}
-    photo_mapping = {raw_id: i for i, raw_id in enumerate(unique_photos)}
-    
-    num_users = len(user_mapping)
-    num_photos = len(photo_mapping)
-    print(f"Total Unique Users: {num_users:,} | Total Unique Photos: {num_photos:,}")
-    
-    print("Initializing PyG HeteroData...")
+    sp = os.path.join(data_dir, 'splits')
+    obs = pd.concat([pd.read_csv(os.path.join(sp, f'{s}_obs_edges.csv'),
+                     dtype={'user_id': np.int64, 'photo_id': np.int64, 'timestamp': np.float64})
+                     for s in SPLITS], ignore_index=True)
+    lab = pd.concat([pd.read_csv(os.path.join(sp, f'{s}_target_labels.csv'),
+                     usecols=['photo_id', 'future_popularity'],
+                     dtype={'photo_id': np.int64, 'future_popularity': np.float32}).assign(split=s)
+                     for s in SPLITS], ignore_index=True)
+
+    g = read_cols(os.path.join(data_dir, 'raw', 'flickr-growth.txt.gz'),
+                  [0, 1], ['follower', 'followed']).drop_duplicates()
+    g = g[g.follower != g.followed]
+    p = read_cols(os.path.join(data_dir, 'raw', 'flickr-all-photos.txt.gz'),
+                  [0, 1], ['photo_id', 'uploader'])
+    p = p[p.photo_id.isin(lab.photo_id)]            # only photos that belong to a split
+
+    user_ids = np.unique(np.concatenate([g.follower, g.followed, obs.user_id, p.uploader]))
+    photo_ids = np.unique(lab.photo_id)
+    n_users, n_photos = len(user_ids), len(photo_ids)
+    print(f"Users: {n_users:,} | Photos: {n_photos:,}")
+
     data = HeteroData()
-    
-    # Initialize placeholder node features (vectors of 1s, dim=16)
-    feat_dim = 16
-    data['user'].x = torch.ones(num_users, feat_dim)
-    data['photo'].x = torch.ones(num_photos, feat_dim)
-    
-    print("Adding edges...")
-    # Edge: User follows User
-    src_follows = [user_mapping[uid] for uid in df_growth['follower']]
-    dst_follows = [user_mapping[uid] for uid in df_growth['followed']]
-    data['user', 'follows', 'user'].edge_index = torch.tensor([src_follows, dst_follows], dtype=torch.long)
-    
-    # Edge: User favorites Photo
-    src_fav = [user_mapping[uid] for uid in df_fav['user_id']]
-    dst_fav = [photo_mapping[pid] for pid in df_fav['photo_id']]
-    data['user', 'favorites', 'photo'].edge_index = torch.tensor([src_fav, dst_fav], dtype=torch.long)
-    
-    # Edge: Photo uploaded_by User (Reverse direction for PyG message passing)
-    src_upload = [photo_mapping[pid] for pid in df_photos['photo_id']]
-    dst_upload = [user_mapping[uid] for uid in df_photos['uploader']]
-    data['photo', 'uploaded_by', 'user'].edge_index = torch.tensor([src_upload, dst_upload], dtype=torch.long)
-    
-    print(f"\nHeteroData object built successfully!\n{data}")
-    return data, user_mapping, photo_mapping
+    data['user', 'follows', 'user'].edge_index = torch.stack(
+        [idx(user_ids, g.follower), idx(user_ids, g.followed)])
+    data['user', 'favorites', 'photo'].edge_index = torch.stack(
+        [idx(user_ids, obs.user_id), idx(photo_ids, obs.photo_id)])
+    data['photo', 'uploaded_by', 'user'].edge_index = torch.stack(
+        [idx(photo_ids, p.photo_id), idx(user_ids, p.uploader)])
+
+    # user features: follow out-/in-degree, favorites given
+    fe = data['user', 'follows', 'user'].edge_index
+    ve = data['user', 'favorites', 'photo'].edge_index
+    ux = torch.stack([torch.bincount(fe[0], minlength=n_users),
+                      torch.bincount(fe[1], minlength=n_users),
+                      torch.bincount(ve[0], minlength=n_users)], dim=1).float()
+    data['user'].x = torch.log1p(ux)
+
+    # photo features: favorites within first 1h/6h/24h/3d/7d + time of day of first favorite
+    st = obs.groupby('photo_id')['timestamp'].min()
+    age_h = ((obs['timestamp'] - obs['photo_id'].map(st)) / 3600).to_numpy()
+    pi = ve[1].numpy()
+    px = np.zeros((n_photos, len(BINS_H) + 2), dtype=np.float32)
+    for j, h in enumerate(BINS_H):
+        px[:, j] = np.log1p(np.bincount(pi[age_h <= h], minlength=n_photos))
+    si = idx(photo_ids, st.index.to_series()).numpy()
+    hod = (st.to_numpy() % 86400) / 86400 * 2 * np.pi
+    px[si, -2], px[si, -1] = np.sin(hod), np.cos(hod)
+    data['photo'].x = torch.from_numpy(px)
+
+    # labels: log1p target, NaN where unlabeled, plus split masks
+    y = torch.full((n_photos,), float('nan'))
+    y[idx(photo_ids, lab.photo_id)] = torch.log1p(torch.from_numpy(lab.future_popularity.to_numpy()))
+    data['photo'].y = y
+    for s in SPLITS:
+        m = torch.zeros(n_photos, dtype=torch.bool)
+        m[idx(photo_ids, lab.photo_id[lab.split == s])] = True
+        data['photo'][f'{s}_mask'] = m
+
+    return T.ToUndirected(merge=False)(data)        # reverse edges so photos get uploader/user info
 
 if __name__ == "__main__":
     DATA_DIR = '/content/drive/MyDrive/Colab Notebooks/PopularityPrediction/data'
-    data, _, _ = load_hgt_graph(DATA_DIR)
+    data = load_hgt_graph(DATA_DIR)
     
-    # Save the PyG graph to disk
     processed_dir = os.path.join(DATA_DIR, 'processed')
-    torch.save(data, os.path.join(processed_dir, 'train_heterodata.pt'))
-    print(f"\nSaved PyG graph to {processed_dir}/train_heterodata.pt")
+    os.makedirs(processed_dir, exist_ok=True)
+    save_path = os.path.join(processed_dir, 'heterodata.pt')
+    
+    torch.save(data, save_path)
+    print(f"\nSaved graph to {save_path}")
+    print(data)

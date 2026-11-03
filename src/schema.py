@@ -10,7 +10,7 @@ def print_data_schemas(data_dir):
         print("1. flickr-growth.txt.gz (User-User Social Graph)")
         # Reading first 5 rows, space-separated, no headers in original data
         df_growth = pd.read_csv(growth_path, sep='\t| ', engine='python', header=None, nrows=5)
-        df_growth.columns = ['follower_user_id', 'followed_user_id', 'timestamp'][:len(df_growth.columns)]
+        # df_growth.columns = ['follower_user_id', 'followed_user_id', 'timestamp'][:len(df_growth.columns)]
         print(df_growth.head(), "\n")
     
     # 2. Favorite Markings (Cascades)
@@ -18,17 +18,10 @@ def print_data_schemas(data_dir):
     if os.path.exists(fav_path):
         print("2. flickr-all-photo-favorite-markings.txt.gz (User-Photo Favorites)")
         df_fav = pd.read_csv(fav_path, sep='\t| ', engine='python', header=None, nrows=5)
-        df_fav.columns = ['user_id', 'photo_id', 'timestamp'][:len(df_fav.columns)]
+        # df_fav.columns = ['user_id', 'photo_id', 'timestamp'][:len(df_fav.columns)]
         print(df_fav.head(), "\n")
         
-    # # 3. Photo Metadata (Uploads)
-    # photo_path = os.path.join(data_dir, 'flickr-all-photos.txt.gz')
-    # if os.path.exists(photo_path):
-    #     print("3. flickr-all-photos.txt.gz (Photo Metadata)")
-    #     df_photos = pd.read_csv(photo_path, sep='\t| ', engine='python', header=None, nrows=5)
-    #     df_photos.columns = ['photo_id', 'uploader_user_id', 'timestamp'][:len(df_photos.columns)]
-    #     print(df_photos.head(), "\n")
-    # 3. Photo Metadata (Uploads)
+   
     photo_path = os.path.join(data_dir, 'flickr-all-photos.txt.gz')
     if os.path.exists(photo_path):
         print("3. flickr-all-photos.txt.gz (Photo Metadata)")
@@ -54,7 +47,7 @@ def print_meta_paths():
 
 if __name__ == "__main__":
     # Point to your specific data folder
-    DATA_DIR = '/content/drive/MyDrive/Colab Notebooks/PopularityPrediction/data/raw'
+    DATA_DIR = '/content/drive/MyDrive/Colab Notebooks/PopularityPrediction/data/raw/flickr'
     
     print_data_schemas(DATA_DIR)
     print_meta_paths()

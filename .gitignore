@@ -1,6 +1,34 @@
-# Ignore all data files and PyG processed graphs
-data/
-diffusion_sim/*.csv
-models/saved_weights/*.pth
+# Byte-compiled / optimized / ambient files
 __pycache__/
-*.pyc
+*.py[cod]
+*$py.class
+*.so
+
+# Jupyter / Colab
+.ipynb_checkpoints/
+*/.ipynb_checkpoints/*
+
+# Data directories and splits
+data/
+outputs/
+*.parquet
+*.txt.gz
+*.csv
+
+# Model checkpoints and weights
+*.pth
+*.pt
+src/ml/models/saved_weights/*
+!src/ml/models/saved_weights/.gitkeep
+
+# Environment and IDEs
+.env
+.venv/
+env/
+venv/
+.vscode/
+.idea/
+
+# OS-generated files
+.DS_Store
+Thumbs.db
