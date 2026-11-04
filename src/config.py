@@ -66,13 +66,13 @@ class DatasetConfig(_Strict):
     paths: DatasetPaths
     read_csv_kwargs: dict[str, Any] = Field(default_factory=dict)
     columns: DatasetColumns
-    edge_source: str            # raw edge column of the influencer
-    edge_target: str            # raw edge column of the influenced
+    edge_source: str
+    edge_target: str
     edge_time_available: bool
     author_rule: Literal["first_event", "owner_file"]
-    post_definition: Literal["column", "derived"] = "column"   # derived: adapter builds posts
-    time_format: str            # unix_seconds | unix_millis | date:<strptime fmt>
-    time: dict[str, Any] | None = None   # consumed by the loader, kept for reference
+    post_definition: Literal["column", "derived"] = "column"
+    time_format: str
+    time: dict[str, Any] | None = None
 
     @model_validator(mode="after")
     def _check(self) -> "DatasetConfig":
@@ -216,6 +216,33 @@ class EvalConfig(_Strict):
     report_mean_of_k: bool = True
 
 
+# --------------------------------------------------------------------- ml
+class HGTConfig(_Strict):
+    hidden_channels: int = 64
+    num_heads: int = 4
+    num_layers: int = 2
+
+
+class RGCNConfig(_Strict):
+    hidden_channels: int = 64
+    num_layers: int = 2
+
+
+class XGBoostConfig(_Strict):
+    n_estimators: int = 100
+    max_depth: int = 6
+    learning_rate: float = 0.1
+
+
+class MLConfig(_Strict):
+    epochs: int = 50
+    batch_size: int = 32
+    lr: float = 0.001
+    hgt: HGTConfig = HGTConfig()
+    rgcn: RGCNConfig = RGCNConfig()
+    xgboost: XGBoostConfig = XGBoostConfig()
+
+
 # --------------------------------------------------------------------- root
 class Config(_Strict):
     run: RunConfig
@@ -227,6 +254,7 @@ class Config(_Strict):
     simulate: SimulateConfig
     im: IMConfig
     eval: EvalConfig
+    ml: MLConfig = MLConfig()
 
     @model_validator(mode="after")
     def _active_exists(self) -> "Config":
@@ -246,7 +274,6 @@ class Config(_Strict):
         return self.active.resolve(self.run.base_path, key)
 
     def section_hash(self, *sections: str) -> str:
-        """Cache key from only the sections that affect a stage."""
         payload = {s: getattr(self, s).model_dump(mode="json")
                    if hasattr(getattr(self, s), "model_dump") else getattr(self, s)
                    for s in sections}
@@ -271,7 +298,6 @@ def _deep_merge(base: dict, over: dict) -> dict:
 
 
 def _apply_override(raw: dict, expr: str) -> None:
-    """Apply 'a.b.c=value' (value parsed as YAML: 200, true, [1,2], text)."""
     if "=" not in expr:
         raise ValueError(f"override must look like a.b=value, got: {expr}")
     key, val = expr.split("=", 1)
@@ -289,7 +315,7 @@ def load_config(config_path: str | Path = "config.yaml",
         path = PROJECT_ROOT / path
     raw = yaml.safe_load(path.read_text())
 
-    for expr in overrides or []:          # run.profile / dataset.name may be overridden
+    for expr in overrides or []:
         _apply_override(raw, expr)
 
     profiles = raw.pop("profiles", {}) or {}
@@ -298,12 +324,12 @@ def load_config(config_path: str | Path = "config.yaml",
         raise ValueError(f"profile '{profile}' not in profiles: {list(profiles)}")
     raw = _deep_merge(raw, profiles[profile])
 
-    for name, block in raw["datasets"].items():          # per-dataset time overrides
+    for name, block in raw["datasets"].items():
         ds_time = block.pop("time", None)
         if name == raw["dataset"]["name"] and ds_time:
             raw["time"] = _deep_merge(raw["time"], ds_time)
 
-    for expr in overrides or []:          # re-apply so CLI always wins last
+    for expr in overrides or []:
         _apply_override(raw, expr)
 
     cfg = Config(**raw)

@@ -30,8 +30,8 @@ class PopularityHGT(nn.Module):
                 in_channels=hidden_channels,
                 out_channels=hidden_channels,
                 metadata=metadata,
-                heads=num_heads,
-                group='sum'
+                heads=num_heads
+                # Removed group='sum' here
             )
             self.convs.append(conv)
             

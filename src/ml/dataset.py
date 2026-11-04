@@ -31,7 +31,6 @@ class PostGraphDataset(Dataset):
         self.dataset_name = cfg.dataset_name
         
         self.splits_dir = self.base_dir / "data" / "splits" / self.dataset_name
-        # Match the sample output directory pattern from features.py
         self.ml_dir = self.base_dir / cfg.run.output_dir / self.dataset_name / "samples" / config_hash
         
         if not self.ml_dir.exists():
@@ -77,6 +76,10 @@ class PostGraphDataset(Dataset):
             data["user"].x = torch.tensor(rec["user_x"], dtype=torch.float32)
             data["post"].x = torch.tensor(rec["post_x"], dtype=torch.float32)
             
+            # Explicitly tell PyG the node counts to prevent batching inference errors
+            data["user"].num_nodes = rec["user_x"].shape[0]
+            data["post"].num_nodes = rec["post_x"].shape[0]
+            
             # Forward Edges
             data["user", "follows", "user"].edge_index = torch.tensor(rec["follows"], dtype=torch.long)
             data["user", "interacts", "post"].edge_index = torch.tensor(rec["interacts"], dtype=torch.long)
@@ -92,8 +95,15 @@ class PostGraphDataset(Dataset):
                 np.flip(rec["follows"], axis=0).copy(), dtype=torch.long
             )
         else:
-            # Fallback for testing if shard cache is missing
+            # Fallback must explicitly define missing nodes and all edge permutations
             data["post"].x = torch.zeros((1, 8), dtype=torch.float32)
+            data["user"].x = torch.zeros((0, 6), dtype=torch.float32)
+            
+            data["post"].num_nodes = 1
+            data["user"].num_nodes = 0
+            
+            data["user", "follows", "user"].edge_index = torch.empty((2, 0), dtype=torch.long)
+            data["user", "interacts", "post"].edge_index = torch.empty((2, 0), dtype=torch.long)
             data["post", "rev_interacts", "user"].edge_index = torch.empty((2, 0), dtype=torch.long)
             data["user", "followed_by", "user"].edge_index = torch.empty((2, 0), dtype=torch.long)
             
