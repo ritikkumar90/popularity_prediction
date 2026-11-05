@@ -15,25 +15,31 @@ class PopularityHGT(nn.Module):
             num_layers: Number of HGT message passing layers.
         """
         super().__init__()
+        self.num_layers = num_layers
         
-        # 1. Node Feature Projections
-        # Projects differently sized node inputs (user_x, post_x) into the same hidden dimension.
-        # -1 uses PyTorch Geometric's lazy initialization to infer input shape automatically.
+        # 1. Node Feature Projections & Initial Normalization
+        # Projects differently sized node inputs into the same hidden dimension.
         self.lin_dict = nn.ModuleDict()
+        self.norm_dict = nn.ModuleDict()
         for node_type in metadata[0]:
             self.lin_dict[node_type] = Linear(-1, hidden_channels)
+            self.norm_dict[node_type] = nn.LayerNorm(hidden_channels)
             
         # 2. HGT Message Passing Layers
         self.convs = nn.ModuleList()
+        self.conv_norms = nn.ModuleList()
         for _ in range(num_layers):
-            conv = HGTConv(
+            self.convs.append(HGTConv(
                 in_channels=hidden_channels,
                 out_channels=hidden_channels,
                 metadata=metadata,
                 heads=num_heads
-                # Removed group='sum' here
-            )
-            self.convs.append(conv)
+            ))
+            # Independent LayerNorm for each node type per layer
+            layer_norm_dict = nn.ModuleDict({
+                node_type: nn.LayerNorm(hidden_channels) for node_type in metadata[0]
+            })
+            self.conv_norms.append(layer_norm_dict)
             
         # 3. Final Regression Head (MLP applied only to 'post' nodes)
         self.mlp = nn.Sequential(
@@ -44,21 +50,35 @@ class PopularityHGT(nn.Module):
         )
 
     def forward(self, x_dict, edge_index_dict):
-        # Step 1: Project raw features
+        # Step 1: Project raw features and normalize
         out_dict = {}
         for node_type, x in x_dict.items():
-            out_dict[node_type] = F.gelu(self.lin_dict[node_type](x))
+            x_proj = self.lin_dict[node_type](x)
+            x_norm = self.norm_dict[node_type](x_proj)
+            out_dict[node_type] = F.gelu(x_norm)
             
-        # Step 2: Pass through HGT layers
-        for conv in self.convs:
+        # Step 2: Pass through HGT layers with Residual Connections
+        for i in range(self.num_layers):
+            conv = self.convs[i]
+            norm_dict = self.conv_norms[i]
+            
+            # Cache previous state for the residual connection
+            identity_dict = {k: v for k, v in out_dict.items()}
+            
+            # Message passing
             out_dict = conv(out_dict, edge_index_dict)
-            out_dict = {node_type: F.gelu(x) for node_type, x in out_dict.items()}
+            
+            # Apply residual, normalization, and activation
+            for node_type, x in out_dict.items():
+                x_res = x + identity_dict[node_type]  # Residual connection
+                x_norm = norm_dict[node_type](x_res)  # LayerNorm
+                out_dict[node_type] = F.gelu(x_norm)  # Activation
             
         # Step 3: Extract the root post embeddings and predict
         # Since batches merge subgraphs, out_dict['post'] will have shape (Batch_Size, Hidden_Channels)
         post_embeddings = out_dict['post']
         
-        # Squeeze output to shape (Batch_Size,) to match target labels
+        # Squeeze output to shape (Batch_Size,) to match target labels safely
         predictions = self.mlp(post_embeddings).squeeze(-1)
         
         return predictions

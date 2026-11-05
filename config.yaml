@@ -45,8 +45,8 @@ datasets:
     post_definition: column
     time_format: "date:%Y-%m-%d"
     time:
-      observation_window: {mode: fixed, value: 90, unit: days}
-      horizon: {value: 180, unit: days}
+      observation_window: {mode: fixed, value: 15, unit: days}
+      horizon: {value: 30, unit: days}
       min_observed_events: 3
 
   higgs:
