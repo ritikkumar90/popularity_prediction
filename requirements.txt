@@ -1,0 +1,11 @@
+torch
+torch_geometric
+torch_sparse
+torch_scatter
+pyg_lib
+xgboost
+pandas
+pyarrow
+joblib
+scikit-learn
+numpy
