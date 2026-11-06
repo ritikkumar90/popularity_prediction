@@ -1,5 +1,5 @@
 run:
-  profile: mini
+  profile: full
   seed: 42
   base_dir: "."
   output_dir: "outputs"
@@ -109,10 +109,10 @@ eval:
   report_mean_of_k: true
 
 ml:
-  epochs: 2
-  batch_size: 32
-  lr: 0.001
   hgt:
+    epochs: 2
+    batch_size: 32
+    lr: 0.001
     hidden_channels: 64
     num_heads: 4
     num_layers: 2

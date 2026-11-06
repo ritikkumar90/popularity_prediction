@@ -17,17 +17,29 @@ build_posts(events)   receives the CLEANED events (time already in unix seconds)
                       t0 must be returned in unix seconds.
 build_edges()         raw `created_at` values, as they appear in the file. Leave
                       the column out for static graphs
-                      (cfg.active.edge_time_available = False).
+                      (edge_time_available=False).
 
-Time handling (cfg.active.time_format)
---------------------------------------
+Construction (no config files)
+------------------------------
+Everything an adapter needs is passed to the constructor:
+  dataset_name         used for the output folder name
+  base_path            project root; output goes to <base_path>/data/processed/<dataset_name>
+  raw_paths            {"votes": Path, "edges": Path, ...} raw files, keyed by name
+  time_format          see below
+  edge_time_available  False for static graphs
+  read_csv_kwargs      forwarded to pandas.read_csv (e.g. sep, header=None)
+Subclasses normally bake their dataset-specific values in and expose only the
+user-facing options (see FlickrAdapter).
+
+Time handling (time_format)
+---------------------------
 Supported: unix_seconds | unix_millis | date:<strptime format>.
 Event times and edge times are both converted to unix seconds with this format.
 If a dataset stores event times differently from edge times (Flickr: numeric
 epoch-days for favorites, dates for edges), the adapter overrides
 convert_event_time() and/or convert_edge_time().
 
-Edge visibility lag is derived from the format, not configured: date-only edge
+Edge visibility lag is derived from the format: date-only edge
 timestamps (e.g. date:%Y-%m-%d) get +86400 s, so an edge becomes visible only
 after its day has ended (no same-day leakage). Adapters can override the
 `edge_time_lag_seconds` property.
@@ -40,8 +52,6 @@ import logging
 from pathlib import Path
 
 import pandas as pd
-
-from src.config import Config
 
 log = logging.getLogger(__name__)
 
@@ -66,16 +76,25 @@ def _parse_time_format(fmt: str) -> tuple[str, object]:
 
 
 class BaseAdapter(abc.ABC):
-    def __init__(self, cfg: Config):
-        self.cfg = cfg
-        self.dataset_name = cfg.dataset_name
-        self.active_cfg = cfg.active
+    def __init__(
+        self,
+        dataset_name: str,
+        base_path: str | Path,
+        raw_paths: dict[str, str | Path],
+        time_format: str,
+        edge_time_available: bool = True,
+        read_csv_kwargs: dict | None = None,
+    ):
+        self.dataset_name = dataset_name
+        self.base_path = Path(base_path)
+        self.raw_paths: dict[str, Path] = {k: Path(v) for k, v in raw_paths.items()}
+        self.read_csv_kwargs: dict = dict(read_csv_kwargs or {})
 
-        self.time_format = self.active_cfg.time_format
+        self.time_format = time_format
         self._time_kind, self._time_arg = _parse_time_format(self.time_format)
-        self.edge_time_available = bool(self.active_cfg.edge_time_available)
+        self.edge_time_available = bool(edge_time_available)
 
-        self.processed_dir: Path = cfg.run.base_path / "data" / "processed" / self.dataset_name
+        self.processed_dir: Path = self.base_path / "data" / "processed" / self.dataset_name
         self.processed_dir.mkdir(parents=True, exist_ok=True)
 
     # ------------------------------------------------------------------
@@ -102,7 +121,7 @@ class BaseAdapter(abc.ABC):
     # Time conversion (overridable per dataset)
     # ------------------------------------------------------------------
     def parse_times(self, values: pd.Series) -> pd.Series:
-        """Raw values -> unix seconds (float, NaN if unparseable), per cfg time_format."""
+        """Raw values -> unix seconds (float, NaN if unparseable), per time_format."""
         if self._time_kind == "numeric":
             return pd.to_numeric(values, errors="coerce").astype("float64") * self._time_arg
         dt = pd.to_datetime(values, format=self._time_arg, errors="coerce", utc=True)
@@ -125,25 +144,31 @@ class BaseAdapter(abc.ABC):
     # ------------------------------------------------------------------
     # Loading helper available to adapters
     # ------------------------------------------------------------------
-    def load_raw_dataframe(self, path_key: str, column_names: list[str]) -> pd.DataFrame:
-        """Load a raw file using the path resolver and pandas kwargs from config."""
-        path = self.cfg.path(path_key)
+    def load_raw_dataframe(self, path_key: str, column_names: list[str], **read_kwargs) -> pd.DataFrame:
+        """Load a raw file from self.raw_paths[path_key].
+
+        `read_csv_kwargs` given to the constructor are applied first; `read_kwargs`
+        (e.g. nrows=1_000_000) override them for this call only.
+        """
+        path = self.raw_paths.get(path_key)
         if path is None:
-            raise ValueError(f"Path for '{path_key}' is not defined in the config.")
+            raise ValueError(f"No raw path registered for '{path_key}'. Known keys: {sorted(self.raw_paths)}")
+        if not path.exists():
+            raise FileNotFoundError(f"Raw file for '{path_key}' not found: {path}")
 
         column_names = list(column_names)
-        kwargs = dict(self.active_cfg.read_csv_kwargs)
-        log.info(f"Loading {path_key} from {path}")
+        kwargs = {**self.read_csv_kwargs, **read_kwargs}
+        log.info("Loading %s from %s", path_key, path)
         df = pd.read_csv(path, **kwargs)
 
-        # Only treat the file as headerless when config says header=None explicitly.
+        # Only treat the file as headerless when header=None is given explicitly.
         # (With the default header='infer' the first data row would be eaten as a header.)
         headerless = "header" in kwargs and kwargs["header"] is None
         if headerless:
             if df.shape[1] != len(column_names):
                 raise ValueError(
-                    f"'{path_key}' has {df.shape[1]} columns but config names "
-                    f"{len(column_names)}: {column_names}"
+                    f"'{path_key}' has {df.shape[1]} columns but {len(column_names)} names were "
+                    f"given: {column_names}"
                 )
             df.columns = column_names
         else:
@@ -327,6 +352,10 @@ class BaseAdapter(abc.ABC):
     # ------------------------------------------------------------------
     # Saving
     # ------------------------------------------------------------------
+    def manifest_extra(self) -> dict:
+        """Extra JSON-serialisable entries for manifest.json (e.g. subset settings). Override in adapters."""
+        return {}
+
     def save(self, events: pd.DataFrame, posts: pd.DataFrame, edges: pd.DataFrame) -> None:
         events.to_parquet(self.processed_dir / "events.parquet", index=False)
         posts.to_parquet(self.processed_dir / "posts.parquet", index=False)
@@ -334,7 +363,6 @@ class BaseAdapter(abc.ABC):
 
         manifest = {
             "dataset": self.dataset_name,
-            "profile": str(self.cfg.run.profile),
             "time_format": self.time_format,
             "edge_time_available": self.edge_time_available,
             "edge_time_lag_seconds": self.edge_time_lag_seconds,
@@ -346,6 +374,7 @@ class BaseAdapter(abc.ABC):
         }
         if self.edge_time_available and len(edges):
             manifest["edge_time_range"] = [int(edges["created_at"].min()), int(edges["created_at"].max())]
+        manifest.update(self.manifest_extra())
         with open(self.processed_dir / "manifest.json", "w") as f:
             json.dump(manifest, f, indent=2)
 
@@ -353,7 +382,7 @@ class BaseAdapter(abc.ABC):
     # Pipeline
     # ------------------------------------------------------------------
     def process_and_save(self) -> None:
-        log.info(f"Processing dataset: {self.dataset_name} (Profile: {self.cfg.run.profile})")
+        log.info("Processing dataset: %s", self.dataset_name)
 
         events = self.clean_events(self.build_events())
         posts = self.clean_posts(self.build_posts(events))

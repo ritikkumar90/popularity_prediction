@@ -218,12 +218,18 @@ class EvalConfig(_Strict):
 
 # --------------------------------------------------------------------- ml
 class HGTConfig(_Strict):
+    epochs: int = 50
+    batch_size: int = 32
+    lr: float = 0.001
     hidden_channels: int = 64
     num_heads: int = 4
     num_layers: int = 2
 
 
 class RGCNConfig(_Strict):
+    epochs: int = 50
+    batch_size: int = 32
+    lr: float = 0.001
     hidden_channels: int = 64
     num_layers: int = 2
 
@@ -235,9 +241,6 @@ class XGBoostConfig(_Strict):
 
 
 class MLConfig(_Strict):
-    epochs: int = 50
-    batch_size: int = 32
-    lr: float = 0.001
     hgt: HGTConfig = HGTConfig()
     rgcn: RGCNConfig = RGCNConfig()
     xgboost: XGBoostConfig = XGBoostConfig()
