@@ -69,8 +69,8 @@ N_JOBS = -1              # parallel workers (-1 = all CPUs)
 
 @dataclass
 class SampleConfig:
-    hops: int = 2                          # neighbourhood expansion depth (0 = only author + adopters)
-    max_subgraph_users: int = 1000         # cap on users per post subgraph
+    hops: int = 1                          # neighbourhood expansion depth (0 = only author + adopters)
+    max_subgraph_users: int = 200         # cap on users per post subgraph
     n_time_bins: int = 4                   # bins for bin_frac_* (>= 2)
     neighbor_limit_per_node: int | None = None  # max out-neighbours expanded per node (None = all).
                                            # Set e.g. 200 if posts with very popular users are slow.

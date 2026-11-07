@@ -104,7 +104,7 @@ def train_hgt(
         model.train()
         train_loss = 0.0
 
-        for batch in train_loader:
+        for batch_idx, batch in enumerate(train_loader):
             batch = batch.to(device)
             optimizer.zero_grad()
 
@@ -113,6 +113,9 @@ def train_hgt(
 
             loss.backward()
             optimizer.step()
+
+            if batch_id % 50 == 0:
+              log.info(f"Epoch {epoch} | Batch {batch_idx}/{len(train_loader)} | Loss: {loss.item():.4f}")
             train_loss += loss.item() * batch.num_graphs
 
         train_loss /= len(train_loader.dataset)
