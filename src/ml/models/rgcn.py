@@ -1,10 +1,15 @@
+import argparse
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
 from torch_geometric.nn import HeteroConv, SAGEConv, Linear
 
+# --- Default Configurations ---
+DEFAULT_HIDDEN_CHANNELS = 64
+DEFAULT_NUM_LAYERS = 2
+
 class PopularityRGCN(nn.Module):
-    def __init__(self, metadata, hidden_channels: int = 64, num_layers: int = 2):
+    def __init__(self, metadata, hidden_channels: int = DEFAULT_HIDDEN_CHANNELS, num_layers: int = DEFAULT_NUM_LAYERS):
         """
         Relational Graph Convolutional Network (R-GCN) Baseline for Heterogeneous Data.
         
@@ -62,6 +67,11 @@ class PopularityRGCN(nn.Module):
 if __name__ == "__main__":
     from torch_geometric.data import HeteroData
     
+    parser = argparse.ArgumentParser(description="Test R-GCN Model Initialization")
+    parser.add_argument("--hidden_channels", type=int, default=DEFAULT_HIDDEN_CHANNELS, help="Hidden dimension")
+    parser.add_argument("--num_layers", type=int, default=DEFAULT_NUM_LAYERS, help="Number of GNN layers")
+    args = parser.parse_args()
+
     # Mock data validation
     data = HeteroData()
     data['user'].x = torch.randn(10, 6)
@@ -71,8 +81,14 @@ if __name__ == "__main__":
     data['post', 'rev_interacts', 'user'].edge_index = torch.stack([torch.zeros(5, dtype=torch.long), torch.randint(0, 10, (5,))])
     data['user', 'followed_by', 'user'].edge_index = torch.randint(0, 10, (2, 15))
     
-    model = PopularityRGCN(metadata=data.metadata(), hidden_channels=32, num_layers=2)
+    model = PopularityRGCN(
+        metadata=data.metadata(), 
+        hidden_channels=args.hidden_channels, 
+        num_layers=args.num_layers
+    )
     
     with torch.no_grad():
         out = model(data.x_dict, data.edge_index_dict)
+        print(f"Model initialized with hidden_channels={args.hidden_channels}, num_layers={args.num_layers}")
         print("Mock R-GCN output shape:", out.shape)
+        print("Mock R-GCN output values:", out)

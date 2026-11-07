@@ -24,7 +24,8 @@ from pathlib import Path
 import torch
 import torch.nn as nn
 
-from src.ml.dataset import get_dataloaders          # no config object needed
+# from src.ml.dataset import get_dataloaders   
+from src.ml.dataset_ram import get_dataloaders_ram as get_dataloaders       # no config object needed
 from src.ml.models.hgt import PopularityHGT, DROPOUT, HIDDEN_CHANNELS, NUM_HEADS, NUM_LAYERS
 
 log = logging.getLogger(__name__)
@@ -114,7 +115,7 @@ def train_hgt(
             loss.backward()
             optimizer.step()
 
-            if batch_id % 50 == 0:
+            if batch_idx % 50 == 0:
               log.info(f"Epoch {epoch} | Batch {batch_idx}/{len(train_loader)} | Loss: {loss.item():.4f}")
             train_loss += loss.item() * batch.num_graphs
 

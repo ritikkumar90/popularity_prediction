@@ -1,3 +1,4 @@
+import argparse
 import logging
 from pathlib import Path
 
@@ -6,18 +7,59 @@ import pandas as pd
 import xgboost as xgb
 from sklearn.metrics import mean_squared_error, mean_absolute_error
 
-from src.config import load_config
-from src.ml.train import find_latest_hash_dir
-
 log = logging.getLogger(__name__)
 
-def train_xgb():
-    cfg = load_config()
-    base_dir = cfg.run.base_path
+# --- Default Configurations ---
+DEFAULT_BASE_PATH = "."
+DEFAULT_DATASET_NAME = "flickr"
+DEFAULT_OUTPUT_DIR = "outputs"
+DEFAULT_SEED = 42
+
+DEFAULT_N_ESTIMATORS = 100
+DEFAULT_MAX_DEPTH = 6
+DEFAULT_LEARNING_RATE = 0.1
+
+
+def find_latest_hash_dir(samples_dir: Path) -> str:
+    """Find the most recently modified feature hash directory."""
+    if not samples_dir.exists():
+        raise FileNotFoundError(f"Missing samples directory {samples_dir}. Run features.py first.")
     
-    samples_dir = base_dir / cfg.run.output_dir / cfg.dataset_name / "samples"
-    splits_dir = base_dir / "data" / "splits" / cfg.dataset_name
-    ml_dir = base_dir / cfg.run.output_dir / cfg.dataset_name / "ml"
+    subdirs = [d for d in samples_dir.iterdir() if d.is_dir()]
+    if not subdirs:
+        raise FileNotFoundError(f"No hashed feature directories found in {samples_dir}")
+    
+    # Check for index.parquet to ensure it's a finished run if possible
+    finished = [d for d in subdirs if (d / "index.parquet").exists()]
+    if finished:
+        latest = max(finished, key=lambda d: (d / "index.parquet").stat().st_mtime)
+    else:
+        latest = max(subdirs, key=lambda d: d.stat().st_mtime)
+        
+    return latest.name
+
+
+def train_xgb():
+    parser = argparse.ArgumentParser(description="Train XGBoost Baseline for Popularity Prediction")
+    
+    # Environment Arguments
+    parser.add_argument("--base_path", type=str, default=DEFAULT_BASE_PATH, help="Base path for the project")
+    parser.add_argument("--dataset_name", type=str, default=DEFAULT_DATASET_NAME, help="Target dataset name (e.g., flickr, digg)")
+    parser.add_argument("--output_dir", type=str, default=DEFAULT_OUTPUT_DIR, help="Output directory inside base_path")
+    parser.add_argument("--seed", type=int, default=DEFAULT_SEED, help="Random seed for reproducibility")
+    
+    # XGBoost Hyperparameters
+    parser.add_argument("--n_estimators", type=int, default=DEFAULT_N_ESTIMATORS, help="Number of boosting rounds")
+    parser.add_argument("--max_depth", type=int, default=DEFAULT_MAX_DEPTH, help="Maximum tree depth")
+    parser.add_argument("--learning_rate", type=float, default=DEFAULT_LEARNING_RATE, help="Learning rate")
+    
+    args = parser.parse_args()
+
+    # Setup directories
+    base_dir = Path(args.base_path)
+    samples_dir = base_dir / args.output_dir / args.dataset_name / "samples"
+    splits_dir = base_dir / "data" / "splits" / args.dataset_name
+    ml_dir = base_dir / args.output_dir / args.dataset_name / "ml"
     ml_dir.mkdir(parents=True, exist_ok=True)
     
     config_hash = find_latest_hash_dir(samples_dir)
@@ -49,30 +91,34 @@ def train_xgb():
     
     log.info(f"Train samples: {len(X_train)} | Val samples: {len(X_val)} | Test samples: {len(X_test)}")
     
-    # 4. Initialize Model from YAML Config
+    # 4. Initialize and Train Model
+    log.info(f"Initializing XGBoost with hyperparams: n_estimators={args.n_estimators}, max_depth={args.max_depth}, learning_rate={args.learning_rate}")
     model = xgb.XGBRegressor(
-        n_estimators=cfg.ml.xgboost.n_estimators,
-        max_depth=cfg.ml.xgboost.max_depth,
-        learning_rate=cfg.ml.xgboost.learning_rate,
+        n_estimators=args.n_estimators,
+        max_depth=args.max_depth,
+        learning_rate=args.learning_rate,
         objective="reg:squarederror",
-        random_state=cfg.run.seed,
+        random_state=args.seed,
         early_stopping_rounds=10
     )
     
-    # 5. Train Model
     log.info("Starting XGBoost training...")
     model.fit(
         X_train, y_train,
-        eval_set=[(X_val, y_val)],
+        eval_set=[(X_train, y_train), (X_val, y_val)],
         verbose=False
     )
     
-    # 6. Save Model Weights
+    # Print early stopping and training summary
+    best_iteration = model.best_iteration
+    log.info(f"Training completed. Best iteration: {best_iteration}")
+    
+    # 5. Save Model Weights
     model_save_path = ml_dir / "xgboost_best.json"
     model.save_model(model_save_path)
     log.info(f" -> Saved best XGBoost model to {model_save_path}")
     
-    # 7. Evaluate validation
+    # 6. Evaluate validation
     val_preds_log = model.predict(X_val)
     val_loss = mean_squared_error(y_val, val_preds_log)
     
@@ -83,7 +129,7 @@ def train_xgb():
     
     log.info(f"Validation | MSLE: {val_loss:.4f} | MAE: {val_mae:.2f}")
     
-    # 8. Evaluate test
+    # 7. Evaluate test
     test_preds_log = model.predict(X_test)
     test_loss = mean_squared_error(y_test, test_preds_log)
     
@@ -91,9 +137,15 @@ def train_xgb():
     test_true_raw = np.expm1(y_test)
     test_mae = mean_absolute_error(test_true_raw, test_preds_raw)
     
-    log.info("--- Training Complete. Evaluating on Test Set ---")
-    log.info(f"Final Test Loss (MSLE): {test_loss:.4f}")
-    log.info(f"Final Test MAE (Absolute Count): {test_mae:.2f}")
+    print(f"\n=== FINAL LOSS STATS ===")
+    print(f"Dataset: {args.dataset_name}")
+    print(f"Model: XGBoost (n_est={args.n_estimators}, depth={args.max_depth}, lr={args.learning_rate})")
+    print(f"Validation Loss (MSLE): {val_loss:.4f}")
+    print(f"Validation MAE: {val_mae:.2f}")
+    print(f"Test Loss (MSLE): {test_loss:.4f}")
+    print(f"Test MAE: {test_mae:.2f}")
+    print(f"========================\n")
+
 
 if __name__ == "__main__":
     logging.basicConfig(level=logging.INFO, format="%(levelname)s: %(message)s")

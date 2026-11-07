@@ -1,30 +1,59 @@
+import argparse
 import logging
 import torch
 import torch.nn as nn
 from pathlib import Path
 
-from src.config import load_config
-from src.ml.dataset import get_dataloaders
+# from src.ml.dataset import get_dataloaders
+from src.ml.dataset_ram import get_dataloaders_ram as get_dataloaders       # no config object needed
+
 from src.ml.models.rgcn import PopularityRGCN
-from src.ml.train import find_latest_hash_dir
 
 log = logging.getLogger(__name__)
 
+# --- Default Configurations ---
+DEFAULT_BASE_PATH = "."
+DEFAULT_DATASET_NAME = "flickr"
+DEFAULT_OUTPUT_DIR = "outputs"
+
+DEFAULT_BATCH_SIZE = 32
+DEFAULT_HIDDEN_CHANNELS = 64
+DEFAULT_NUM_LAYERS = 2
+DEFAULT_LR = 0.001
+DEFAULT_EPOCHS = 50
+
 def train_rgcn():
-    cfg = load_config()
+    parser = argparse.ArgumentParser(description="Train R-GCN for Popularity Prediction")
+    
+    # Environment Arguments
+    parser.add_argument("--base_path", type=str, default=DEFAULT_BASE_PATH, help="Base path for the project")
+    parser.add_argument("--dataset_name", type=str, default=DEFAULT_DATASET_NAME, help="Target dataset name (e.g., flickr, digg)")
+    parser.add_argument("--output_dir", type=str, default=DEFAULT_OUTPUT_DIR, help="Output directory inside base_path")
+    
+    # R-GCN Hyperparameters
+    parser.add_argument("--batch_size", type=int, default=DEFAULT_BATCH_SIZE, help="Training batch size")
+    parser.add_argument("--hidden_channels", type=int, default=DEFAULT_HIDDEN_CHANNELS, help="Hidden dimension of the network")
+    parser.add_argument("--num_layers", type=int, default=DEFAULT_NUM_LAYERS, help="Number of message passing layers")
+    parser.add_argument("--lr", type=float, default=DEFAULT_LR, help="Learning rate")
+    parser.add_argument("--epochs", type=int, default=DEFAULT_EPOCHS, help="Number of training epochs")
+    
+    args = parser.parse_args()
+
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     log.info(f"Using device: {device}")
 
-    base_dir = cfg.run.base_path
-    samples_dir = base_dir / cfg.run.output_dir / cfg.dataset_name / "samples"
-    ml_dir = base_dir / cfg.run.output_dir / cfg.dataset_name / "ml"
+    # Setup directories
+    base_dir = Path(args.base_path)
+    ml_dir = base_dir / args.output_dir / args.dataset_name / "ml"
     ml_dir.mkdir(parents=True, exist_ok=True)
     
-    config_hash = find_latest_hash_dir(samples_dir)
-    
     # 1. Load Data
+    # get_dataloaders automatically finds the latest hash dir if config_hash is not provided
     train_loader, val_loader, test_loader = get_dataloaders(
-        cfg, config_hash=config_hash, batch_size=cfg.ml.batch_size
+        base_path=args.base_path,
+        dataset_name=args.dataset_name,
+        batch_size=args.batch_size,
+        output_dir=args.output_dir
     )
 
     if len(train_loader) == 0:
@@ -32,22 +61,29 @@ def train_rgcn():
 
     # 2. Initialize Model using metadata from the first batch
     sample_batch = next(iter(train_loader))
+    sample_batch = sample_batch.to(device) # Make sure it's on the correct device
+    
+    log.info(f"Initializing RGCN with hyperparams: hidden_channels={args.hidden_channels}, num_layers={args.num_layers}, lr={args.lr}, batch_size={args.batch_size}")
+    
     model = PopularityRGCN(
         metadata=sample_batch.metadata(),
-        hidden_channels=cfg.ml.rgcn.hidden_channels,
-        num_layers=cfg.ml.rgcn.num_layers
+        hidden_channels=args.hidden_channels,
+        num_layers=args.num_layers
     ).to(device)
 
-    # 3. Setup Optimizer and Loss
-    criterion = nn.MSELoss()
-    optimizer = torch.optim.AdamW(model.parameters(), lr=cfg.ml.lr, weight_decay=1e-4)
+    # --- THE FIX: Dummy forward pass to trigger PyG lazy initialization ---
+    with torch.no_grad():
+        model(sample_batch.x_dict, sample_batch.edge_index_dict)
 
+    # 3. Setup Optimizer and Loss (Now it will track ALL parameters)
+    criterion = nn.MSELoss()
+    optimizer = torch.optim.AdamW(model.parameters(), lr=args.lr, weight_decay=1e-4)
     best_val_loss = float("inf")
     model_save_path = ml_dir / "rgcn_best.pt"
 
     # 4. Training Loop
     log.info("Starting R-GCN training...")
-    for epoch in range(1, cfg.ml.epochs + 1):
+    for epoch in range(1, args.epochs + 1):
         model.train()
         train_loss = 0.0
         
@@ -85,7 +121,7 @@ def train_rgcn():
         val_loss /= len(val_loader.dataset)
         val_mae /= len(val_loader.dataset)
 
-        log.info(f"Epoch {epoch:03d} | Train Loss (MSLE): {train_loss:.4f} | Val Loss (MSLE): {val_loss:.4f} | Val MAE: {val_mae:.2f}")
+        log.info(f"Epoch {epoch:03d}/{args.epochs} | Train Loss (MSLE): {train_loss:.4f} | Val Loss (MSLE): {val_loss:.4f} | Val MAE: {val_mae:.2f}")
 
         # 6. Checkpoint Best Model
         if val_loss < best_val_loss:
@@ -113,8 +149,13 @@ def train_rgcn():
     test_loss /= len(test_loader.dataset)
     test_mae /= len(test_loader.dataset)
     
-    log.info(f"Final Test Loss (MSLE): {test_loss:.4f}")
-    log.info(f"Final Test MAE (Absolute Count): {test_mae:.2f}")
+    print(f"\\n=== FINAL LOSS STATS ===")
+    print(f"Dataset: {args.dataset_name}")
+    print(f"Model: R-GCN (hidden={args.hidden_channels}, layers={args.num_layers}, lr={args.lr})")
+    print(f"Validation Loss (MSLE): {best_val_loss:.4f}")
+    print(f"Test Loss (MSLE): {test_loss:.4f}")
+    print(f"Test MAE: {test_mae:.2f}")
+    print(f"========================\\n")
 
 if __name__ == "__main__":
     logging.basicConfig(level=logging.INFO, format="%(levelname)s: %(message)s")
