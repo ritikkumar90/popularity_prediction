@@ -1,268 +1,220 @@
-import json
-import heapq
+"""Diffusion simulator: Orchestrator, CLI, and Output generation."""
+from __future__ import annotations
+
+import argparse
+import importlib
 import logging
+import time
+import uuid
+from pathlib import Path
+
 import numpy as np
 import pandas as pd
-from collections import defaultdict
-from src.config import Config, load_config
-from src.data.splitter import TimeSplitter
-from src.im.selectors import SeedSelectors
+from joblib import Parallel, delayed, dump
+
+from src.diffusion.fit import load_fit
+from src.diffusion.variants import VARIANTS, Opts
+from src.diffusion.simulation_graph import load_posts, _get_graph, PostSim
 
 log = logging.getLogger(__name__)
 
-class FastPostCascadeSimulator:
-    """Compiled per-post graph representation for ultra-fast Monte Carlo rollouts."""
-    def __init__(
-        self, 
-        adj: dict[int, tuple[np.ndarray, np.ndarray]], 
-        initial_active: dict[int, float], 
-        t_obs: float, 
-        t_end: float, 
-        delay_rate: float, 
-        scale_factor: float, 
-        max_size: int, 
-        base_seed: int
-    ):
-        self.adj = adj
-        self.initial_active = initial_active
-        self.t_obs = t_obs
-        self.t_end = t_end
-        self.mean_delay = 1.0 / delay_rate
-        self.scale_factor = scale_factor
-        self.max_size = max_size
-        self.base_seed = base_seed
+# ============================================================================ #
+# SETTINGS
+# ============================================================================ #
+DATASET = "flickr"
+BASE_PATH = "."
+OUTPUT_DIR = "outputs"
+SPLIT = "test"
+N_POSTS = 5
+SEED = 0
+P_MAX = "0.05"
+VARIANT_NAMES = "all"
+IM_ALGOS = "greedy,celf"
+K_LIST = "1,2,3"
+SELECTION_RUNS = 30
+EVAL_RUNS = 200
+CANDIDATE_TOP_N = 50
+N_JOBS = -1
+CHUNK_POSTS = 8
+SHOW_POSTS = 5
+TAG = ""
 
-    def evaluate_spread(self, extra_seeds: list[int], n_runs: int) -> float:
-        total_size = 0
-        
-        for r in range(n_runs):
-            rng = np.random.default_rng(self.base_seed + r)
-            active = self.initial_active.copy()
-            pq = []
+def _run_chunk(graph_path: str, tasks: list, cfg: dict) -> list:
+    G = _get_graph(graph_path)
+    opts = Opts(
+        k_list=tuple(cfg["k_list"]), 
+        selection_runs=cfg["selection_runs"], 
+        eval_runs=cfg["eval_runs"],
+        candidate_top_n=cfg["candidate_top_n"],
+        im_algos=tuple(cfg["im_algos"])
+    )
+    rows = []
+    for post_id, t_obs, t_end, act, act_dt in tasks:
+        post = PostSim(G, cfg, t_obs, t_end, act, act_dt)
+        row = {"post_id": post_id, "observed": int(len(act))}
+        for name in cfg["variants"]:
+            t0 = time.perf_counter()
+            row.update(VARIANTS[name](post, opts))
+            row[f"sec_{name}"] = time.perf_counter() - t0
+        rows.append(row)
+    return rows
 
-            # Only nodes with outgoing edges can infect others
-            for u, t in active.items():
-                if u in self.adj:
-                    heapq.heappush(pq, (t, u))
+_MODULE = __spec__.name if (__name__ == "__main__" and __spec__ is not None) else __name__
 
-            for s in extra_seeds:
-                if s not in active:
-                    active[s] = self.t_obs
-                    if s in self.adj:
-                        heapq.heappush(pq, (self.t_obs, s))
+def _task(module: str, graph_path: str, tasks: list, cfg: dict) -> list:
+    return importlib.import_module(module)._run_chunk(graph_path, tasks, cfg)
 
-            count = len(active)
+def simulate(graph_path: str, tasks: list, cfg: dict, n_jobs: int, chunk_posts: int) -> pd.DataFrame:
+    if n_jobs != 1 and _MODULE == "__main__":
+        log.warning("Run with `python -m src.diffusion.simulator` for parallel workers; using n_jobs=1.")
+        n_jobs = 1
 
-            while pq and count < self.max_size:
-                tu, u = heapq.heappop(pq)
-                if tu > self.t_end:
-                    break
-                if tu > active[u]:
-                    continue
+    tasks.sort(key=lambda t: len(t[3]), reverse=True)
+    n_chunks = max(1, len(tasks) // chunk_posts)
+    chunks = [[] for _ in range(n_chunks)]
+    for i, t in enumerate(tasks):
+        chunks[i % n_chunks].append(t)
+    chunks = [c for c in chunks if c]
 
-                targets, probs = self.adj[u]
-                mask = rng.random(len(targets)) < probs
-                if not np.any(mask):
-                    continue
+    log.info("Simulating %d posts in %d balanced chunks (n_jobs=%s, variants=%s, im_algos=%s, p_max=%g)...",
+             len(tasks), len(chunks), n_jobs, cfg["variants"], cfg["im_algos"], cfg["p_max"])
 
-                succ_targets = targets[mask]
-                delays = rng.exponential(self.mean_delay, size=len(succ_targets))
-                arr_times = tu + delays
+    if n_jobs == 1:
+        res = [_run_chunk(graph_path, c, cfg) for c in chunks]
+    else:
+        res = Parallel(n_jobs=n_jobs, verbose=5)(delayed(_task)(_MODULE, graph_path, c, cfg) for c in chunks)
+    return pd.DataFrame([r for chunk in res for r in chunk])
 
-                for v, tv in zip(succ_targets, arr_times):
-                    v_int = int(v)
-                    if tv <= self.t_end:
-                        prev_t = active.get(v_int)
-                        if prev_t is None or tv < prev_t:
-                            if prev_t is None:
-                                count += 1
-                            active[v_int] = float(tv)
-                            if v_int in self.adj:
-                                heapq.heappush(pq, (float(tv), v_int))
+def _msle(p, y) -> float:
+    return float(np.mean((np.log1p(p) - np.log1p(y)) ** 2))
 
-            total_size += count
+def score(df: pd.DataFrame) -> pd.DataFrame:
+    y = df["label"].to_numpy(float)
+    rows = [dict(method="observed_only", n=len(df), msle=_msle(df["observed"], y),
+                 mae=float(np.mean(np.abs(df["observed"] - y))), mean_pred=float(df["observed"].mean()),
+                 mean_label=float(y.mean()), mean_gain=np.nan, scored=True)]
+    if "baseline_pred" in df:
+        p = df["baseline_pred"].to_numpy(float)
+        rows.append(dict(method="baseline", n=len(df), msle=_msle(p, y), mae=float(np.mean(np.abs(p - y))),
+                         mean_pred=float(p.mean()), mean_label=float(y.mean()), mean_gain=np.nan, scored=True))
+    for col in [c for c in df.columns if c.startswith(("greedy_k", "celf_k")) and not c.endswith("_gain")]:
+        rows.append(dict(method=col, n=len(df), msle=np.nan, mae=np.nan, mean_pred=float(df[col].mean()),
+                         mean_label=float(y.mean()), mean_gain=float(df[f"{col}_gain"].mean()), scored=False))
+    return pd.DataFrame(rows)
 
-        return (total_size / n_runs) * self.scale_factor
+def make_table(df: pd.DataFrame, k_list, im_algos) -> pd.DataFrame:
+    t = pd.DataFrame({"Post ID": df["post_id"], "Ground Truth": df["label"], "Observed": df["observed"]})
+    if "baseline_pred" in df: t["Baseline"] = df["baseline_pred"]
+    for name in im_algos:
+        title = name.capitalize()
+        for k in k_list:
+            if f"{name}_k{k}" in df: t[f"{title} k={k}"] = df[f"{name}_k{k}"]
+    return t
 
+def print_table(t: pd.DataFrame, n_show: int) -> None:
+    top = t.sort_values("Ground Truth", ascending=False).head(n_show).astype(object)
+    cols = list(top.columns)
+    w = [max(len(c), 9) for c in cols]
+    line = " | ".join(c.ljust(wi) for c, wi in zip(cols, w))
+    print(f"\n=== Top {len(top)} posts by ground truth ===\n{'-' * len(line)}\n{line}\n{'-' * len(line)}")
+    for _, r in top.iterrows():
+        print(" | ".join((f"{r[c]:.1f}" if c != "Post ID" else str(r[c])).ljust(wi) for c, wi in zip(cols, w)))
+    print("-" * len(line))
 
-class DiffusionRunner:
-    def __init__(self, cfg: Config):
-        self.cfg = cfg
-        self.dataset_name = cfg.dataset_name
-        self.base_dir = cfg.run.base_path
-        
-        fit_file = self.base_dir / cfg.run.output_dir / self.dataset_name / "fit" / "fitted_params.json"
-        if not fit_file.exists():
-            raise FileNotFoundError(f"Missing {fit_file}. Run `python -m src.diffusion.fit` first.")
-            
-        with open(fit_file, "r") as f:
-            self.params = json.load(f)
+def _attach_labels(df: pd.DataFrame, splits_dir: Path) -> pd.DataFrame:
+    labels = pd.read_parquet(splits_dir / "labels.parquet")[["post_id", "label"]]
+    out = df.merge(labels, on="post_id", how="left")
+    if out["label"].isna().any():
+        out = out.dropna(subset=["label"]).reset_index(drop=True)
+    return out
 
-        self.global_p = float(self.params["global_p"])
-        self.delay_rate = float(self.params["delay_rate"])
-        self.scale_factor = float(self.params["scale_factor"]) if cfg.fit.scale_factor.enabled else 1.0
-        self.user_p = {int(k): float(v) for k, v in self.params.get("user_p", {}).items()}
-        self.edge_p = self.params.get("edge_p", {})
-        self.estimator = self.params.get("p_estimator", "backoff")
+def run(dataset=DATASET, base_path=BASE_PATH, output_dir=OUTPUT_DIR, split=SPLIT, n_posts=N_POSTS, seed=SEED,
+        p_max=P_MAX, variants=VARIANT_NAMES, im_algos=IM_ALGOS, k_list=K_LIST, selection_runs=SELECTION_RUNS, eval_runs=EVAL_RUNS,
+        candidate_top_n=CANDIDATE_TOP_N, n_jobs=N_JOBS, chunk_posts=CHUNK_POSTS, show_posts=SHOW_POSTS, tag=TAG,
+        allow_static_graph=False):
+    base = Path(base_path)
+    res_dir = base / output_dir / dataset / "results"
+    res_dir.mkdir(parents=True, exist_ok=True)
+    suffix = f"_{tag}" if tag else ""
 
-        self.splitter = TimeSplitter(cfg)
-        self.results_dir = self.base_dir / cfg.run.output_dir / self.dataset_name / "results"
-        self.results_dir.mkdir(parents=True, exist_ok=True)
+    p_values = [float(x) for x in str(p_max).split(",") if x.strip()]
+    names = list(VARIANTS) if variants == "all" else [v.strip() for v in variants.split(",") if v.strip()]
+    
+    im_algos_list = [a.strip().lower() for a in str(im_algos).split(",") if a.strip()]
+    ks = tuple(int(x) for x in str(k_list).split(",") if x.strip())
 
-    def _get_prob(self, u: int, v: int) -> float:
-        if self.estimator == "global":
-            return self.global_p
-        if self.estimator in ("edge", "backoff"):
-            ep = self.edge_p.get(f"{u}_{v}")
-            if ep is not None:
-                return float(ep)
-        if self.estimator in ("user", "backoff"):
-            up = self.user_p.get(u)
-            if up is not None:
-                return float(up)
-        return self.global_p
+    params = load_fit(base_path, dataset, output_dir)
+    G, tasks, meta = load_posts(base, dataset, split, n_posts, seed, allow_static_graph)
+    cfg = dict(rate=float(params["delay_rate"]), seed=seed, seed_p=int(seed) * 7919 + 12345, k_list=list(ks),
+               selection_runs=selection_runs, eval_runs=eval_runs, candidate_top_n=candidate_top_n, im_algos=im_algos_list, p_max=p_values[0])
 
-    def _prepare_post_subgraph(self, post_id: int | str):
-        """Extracts frozen t_obs snapshot, selects top-N candidates, and compiles local NumPy adjacency."""
-        edges_df, events_df, post_meta = self.splitter.get_snapshot(post_id)
-        t0 = float(post_meta["t0"])
-        t_obs = float(post_meta["t_obs"])
-        t_end = float(post_meta["t_end"])
+    path = res_dir / f"_graph_tmp_{uuid.uuid4().hex[:10]}.joblib"
+    dump(G, path)
 
-        initial_active = {}
-        if self.cfg.simulate.start_active_set == "observed":
-            for u, t in zip(events_df["user"].to_numpy(), events_df["time"].to_numpy()):
-                u_int = int(u)
-                if u_int not in initial_active:
-                    initial_active[u_int] = float(t)
-        else:
-            initial_active[int(post_meta["author"])] = t0
+    try:
+        log.info("Warming up Numba JIT cache...")
+        dummy_post = PostSim(_get_graph(str(path)), cfg, tasks[0][1], tasks[0][2], tasks[0][3][:1], tasks[0][4][:1])
+        dummy_post.spread(seeds=[], runs=1, offset=0)
+        cands = dummy_post.candidates(1)
+        if cands: dummy_post.spread(seeds=cands, runs=1, offset=0)
+    except Exception as e:
+        log.warning("Warmup failed (ignoring): %s", e)
 
-        active_set = set(initial_active.keys())
+    try:
+        if len(p_values) > 1:
+            rows = []
+            for pv in p_values:
+                df = _attach_labels(simulate(str(path), tasks, {**cfg, "p_max": pv, "variants": ["baseline"]}, n_jobs, chunk_posts), base / "data" / "splits" / dataset)
+                y, p = df["label"].to_numpy(float), df["baseline_pred"].to_numpy(float)
+                rows.append(dict(p_max=pv, n=len(df), msle=_msle(p, y), mae=float(np.mean(np.abs(p - y)))))
+            sweep = pd.DataFrame(rows)
+            print(f"\n=== P_MAX sweep ===")
+            print(sweep.to_string(index=False))
+            sweep.to_csv(res_dir / f"diffusion_pmax_sweep{suffix}.csv", index=False)
+            return sweep
 
-        # Extract local multi-hop neighbourhood around active set so we don't scan millions of irrelevant edges
-        frontier = set(active_set)
-        visited_sources = set()
-        sub_edges_list = []
+        df = simulate(str(path), tasks, {**cfg, "p_max": p_values[0], "variants": names}, n_jobs, chunk_posts)
+    finally:
+        path.unlink(missing_ok=True)
 
-        max_hops = max(self.cfg.im.candidate_hops, 2) + 1
-        for _ in range(max_hops):
-            new_sources = frontier - visited_sources
-            if not new_sources:
-                break
-            hop_df = edges_df[edges_df["source"].isin(new_sources)]
-            if hop_df.empty:
-                break
-            sub_edges_list.append(hop_df)
-            visited_sources.update(new_sources)
-            frontier = set(hop_df["target"].unique())
+    df = _attach_labels(df, base / "data" / "splits" / dataset).sort_values("post_id").reset_index(drop=True)
+    table, metrics = make_table(df, ks, im_algos_list), score(df)
+    
+    df.to_csv(res_dir / f"diffusion_posts{suffix}.csv", index=False)
+    table.to_csv(res_dir / f"diffusion_table{suffix}.csv", index=False)
+    metrics.to_csv(res_dir / f"diffusion_metrics{suffix}.csv", index=False)
 
-        if sub_edges_list:
-            sub_edges = pd.concat(sub_edges_list, ignore_index=True).drop_duplicates(subset=["source", "target"])
-        else:
-            sub_edges = edges_df.iloc[0:0]
+    print_table(table, show_posts)
+    print("\n=== Metrics ===")
+    print(metrics.to_string(index=False, float_format=lambda v: f"{v:.4f}"))
+    secs = [c for c in df.columns if c.startswith("sec_")]
+    print("\n=== Mean seconds per post ===")
+    print(df[secs].mean().round(3).to_string())
+    return df, metrics
 
-        # Candidate Pool: inactive nodes in the neighbourhood ranked by out-degree (influence potential)
-        if not sub_edges.empty:
-            out_deg = sub_edges.groupby("source").size()
-            inactive_deg = out_deg[~out_deg.index.isin(active_set)]
-            candidates = inactive_deg.nlargest(self.cfg.im.candidate_top_n).index.astype(int).tolist()
-        else:
-            candidates = []
-
-        # Compile fast NumPy adjacency lists
-        raw_adj = defaultdict(list)
-        for u, v in zip(sub_edges["source"].to_numpy(), sub_edges["target"].to_numpy()):
-            u_int, v_int = int(u), int(v)
-            raw_adj[u_int].append((v_int, self._get_prob(u_int, v_int)))
-
-        compiled_adj = {}
-        for u, pairs in raw_adj.items():
-            targets = np.array([p[0] for p in pairs], dtype=np.int64)
-            probs = np.array([p[1] for p in pairs], dtype=np.float64)
-            compiled_adj[u] = (targets, probs)
-
-        sim = FastPostCascadeSimulator(
-            adj=compiled_adj,
-            initial_active=initial_active,
-            t_obs=t_obs,
-            t_end=t_end,
-            delay_rate=self.delay_rate,
-            scale_factor=self.scale_factor,
-            max_size=self.cfg.simulate.max_cascade_size,
-            base_seed=self.cfg.run.seed
-        )
-        return sim, candidates
-
-    def run_all(self):
-        meta = pd.read_parquet(self.splitter.splits_dir / "split_meta.parquet")
-        labels = pd.read_parquet(self.splitter.splits_dir / "labels.parquet")
-        
-        test_posts = meta[meta["split"] == "test"]["post_id"].tolist()
-        if not test_posts:
-            log.warning("No posts in 'test' split; falling back to all available split posts.")
-            test_posts = meta["post_id"].tolist()
-
-        if self.cfg.sampling.n_posts:
-            test_posts = test_posts[:self.cfg.sampling.n_posts]
-
-        k_list = sorted(self.cfg.im.k_list)
-        k_max = max(k_list)
-        sel_runs = self.cfg.im.selection_runs
-
-        rows = []
-        log.info(f"Running Greedy & CELF (k={k_list}) across {len(test_posts)} posts...")
-
-        for idx, post_id in enumerate(test_posts, 1):
-            # Fetch Ground Truth
-            true_spread = int(labels.loc[labels["post_id"] == post_id, "label"].iloc[0])
-            
-            sim, candidates = self._prepare_post_subgraph(post_id)
-            spread_fn = lambda seeds: sim.evaluate_spread(seeds, n_runs=sel_runs)
-            
-            base_spread = spread_fn([])
-
-            # Run Greedy and CELF for k=1, 2, 3
-            _, greedy_spreads = SeedSelectors.greedy(candidates, k_max, spread_fn, base_spread)
-            _, celf_spreads = SeedSelectors.celf(candidates, k_max, spread_fn, base_spread)
-
-            g_vals = [greedy_spreads[k] for k in k_list]
-            c_vals = [celf_spreads[k] for k in k_list]
-            
-            greedy_avg = float(np.mean(g_vals))
-            celf_avg = float(np.mean(c_vals))
-            all_seeds_avg = float(np.mean(g_vals + c_vals))
-
-            row = {
-                "post_id": post_id,
-                "ground_truth": true_spread,
-                "base_spread": round(base_spread, 2),
-                "greedy_k1": round(greedy_spreads.get(1, base_spread), 2),
-                "greedy_k2": round(greedy_spreads.get(2, base_spread), 2),
-                "greedy_k3": round(greedy_spreads.get(3, base_spread), 2),
-                "celf_k1": round(celf_spreads.get(1, base_spread), 2),
-                "celf_k2": round(celf_spreads.get(2, base_spread), 2),
-                "celf_k3": round(celf_spreads.get(3, base_spread), 2),
-                "greedy_avg": round(greedy_avg, 2),
-                "celf_avg": round(celf_avg, 2),
-                "all_seeds_avg": round(all_seeds_avg, 2),
-            }
-            rows.append(row)
-            log.info(
-                f"[{idx}/{len(test_posts)}] Post {post_id} | True: {true_spread} | Base: {row['base_spread']} | "
-                f"Greedy(k1,2,3)=({row['greedy_k1']}, {row['greedy_k2']}, {row['greedy_k3']})"
-            )
-
-        results_df = pd.DataFrame(rows)
-        out_csv = self.results_dir / "spread_comparison.csv"
-        results_df.to_csv(out_csv, index=False)
-        
-        print("\n=== Final Spread Comparison ===")
-        print(results_df.to_string(index=False))
-        log.info(f"Saved results table to {out_csv}")
-        return results_df
+def _parse_args() -> argparse.Namespace:
+    p = argparse.ArgumentParser()
+    p.add_argument("--dataset", default=DATASET)
+    p.add_argument("--base-path", default=BASE_PATH)
+    p.add_argument("--output-dir", default=OUTPUT_DIR)
+    p.add_argument("--split", choices=["train", "val", "test"], default=SPLIT)
+    p.add_argument("--n-posts", type=int, default=N_POSTS)
+    p.add_argument("--seed", type=int, default=SEED)
+    p.add_argument("--p-max", default=P_MAX)
+    p.add_argument("--variants", default=VARIANT_NAMES, help="'all' or comma list (baseline,im_seeds)")
+    p.add_argument("--im-algos", default=IM_ALGOS, help="comma separated list (greedy,celf)")
+    p.add_argument("--k-list", default=K_LIST)
+    p.add_argument("--selection-runs", type=int, default=SELECTION_RUNS)
+    p.add_argument("--eval-runs", type=int, default=EVAL_RUNS)
+    p.add_argument("--candidate-top-n", type=int, default=CANDIDATE_TOP_N)
+    p.add_argument("--n-jobs", type=int, default=N_JOBS)
+    p.add_argument("--chunk-posts", type=int, default=CHUNK_POSTS)
+    p.add_argument("--show-posts", type=int, default=SHOW_POSTS)
+    p.add_argument("--tag", default=TAG)
+    p.add_argument("--allow-static-graph", action="store_true")
+    return p.parse_args()
 
 if __name__ == "__main__":
-    logging.basicConfig(level=logging.INFO)
-    c = load_config()
-    DiffusionRunner(c).run_all()
+    logging.basicConfig(level=logging.INFO, format="%(levelname)s: %(message)s")
+    a = _parse_args()
+    run(**vars(a))
