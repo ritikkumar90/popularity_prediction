@@ -9,12 +9,15 @@ Adapters are built directly from plain arguments (no config files), e.g.
 """
 from src.data.adapters.base import BaseAdapter
 from src.data.adapters.flickr import FlickrAdapter
+from src.data.adapters.digg import DiggAdapter 
+# from src.data.adapters.higg import HiggAdapter
 
 # To add a dataset: write an adapter (subclass of BaseAdapter), import it here and
 # register it. DiggAdapter is left out until it is refactored to the same
 # constructor style as FlickrAdapter (it still expects the old Config object).
 ADAPTER_REGISTRY = {
     "flickr": FlickrAdapter,
+    "digg":DiggAdapter,
 }
 
-__all__ = ["BaseAdapter", "FlickrAdapter", "ADAPTER_REGISTRY"]
+__all__ = ["BaseAdapter", "FlickrAdapter", "DiggAdapter", "ADAPTER_REGISTRY"]

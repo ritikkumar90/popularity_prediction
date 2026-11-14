@@ -1,0 +1,173 @@
+
+======== 1. LOADING & FORMAT CHECKS ========
+DATA_DIR=/content/drive/MyDrive/Colab Notebooks/PopularityPrediction/data/raw/flickr  PHOTO_SAMPLE_MOD=4
+[photos] numeric timestamps, raw min/median/max in first chunk = 1 / 9.79555e+06 / 2.88599e+07; assuming 1 seconds per unit (override via TIME_SCALE if this is wrong, e.g. 86400 for days)
+[photos] rows=11,267,320  duplicate photo ids dropped=0
+[fav] numeric timestamps, raw min/median/max in first chunk = 14417 / 1.58809e+06 / 2.93044e+06; assuming 1 seconds per unit (override via TIME_SCALE if this is wrong, e.g. 86400 for days)
+[fav] rows read=34,734,221; kept after photo sampling (1/4)=8,706,649
+[growth] timestamps look like date strings (example: '2006-11-02') -> parsed as dates
+[growth] rows=33,140,018
+
+parsed tables: markings=8,706,649 (sampled), photos in marking table=2,815,862, user-id space=2,585,570
+
+first parsed rows (check that columns are what you expect):
+photos  :    photo  upload_ts  owner  views  comments  favs_meta
+          19826443  3348659.0      1   10.0       1.0        1.0
+          14814725  5330341.0      2  405.0       5.0        4.0
+          18443657  7602778.0      2  491.0       6.0        8.0
+markings:  user    photo      ts
+            133 14766986 14417.0
+            133 14766757 14432.0
+          11644 17868947 14436.0
+photos in markings with an entry in the photos file: 100.0%
+photo owners that also appear as fans: 48.7%
+photo owners present in the friend graph: 93.5%;  fans present in the friend graph: 85.7%
+markings dated BEFORE the photo's upload time: 0.20% (should be ~0; a large value means the two files use different time scales/offsets)
+median lag upload->marking = 59.70 hours
+
+======== 2. PHOTO METADATA & OWNERS ========
+photos in photos file: 11,267,320;  photos with >=1 sampled marking: 2,807,328
+photos (sampled) in the photos file but with ZERO markings in the markings file: 8,534 (0.3%) -> if ~0%, the dataset only contains photos that were favorited at least once (survivorship: popularity is conditioned on >=1 favorite).
+upload time range: 1970-01-01 00:00:01 -> 1970-12-01 19:55:28;  last marking: 1970-12-02 21:59:53
+photo age at data end (days): median=176, p10=39, p90=309
+views (crawl-time total): n=2,801,010  mean=179.25  median=67.0  p90=316.0  p99=1850.0  max=391423  skew=103.2  gini=0.699
+    share equal to 0: 0.0%
+comments (crawl-time total): n=2,801,010  mean=4.63  median=2.0  p90=12.0  p99=44.0  max=1753  skew=14.5  gini=0.721
+    share equal to 0: 32.8%
+favorites (crawl-time total): n=2,801,010  mean=3.12  median=1.0  p90=5.0  p99=32.0  max=3018  skew=36.7  gini=0.585
+    share equal to 0: 0.0%
+observed markings in file / favorites column: median=1.00, p10=1.00; photos where observed > column: 0.2%;  Spearman(observed, column)=0.997
+  -> the favorites column is the photo's total at crawl time (all fans); the marking file only has fans among the crawled users, so the file under-counts popularity.
+photos per owner (full photo file): n=545,769  mean=20.64  median=3.0  p90=40.0  p99=313.0  max=5853  skew=14.5  gini=0.812
+top 1% of owners upload 29.0% of photos;  owners with exactly 1 photo: 30.3%
+
+======== 3. OBSERVED POPULARITY (markings per photo, whole period) ========
+markings/photo: n=2,807,328  mean=3.10  median=1.0  p90=5.0  p99=32.0  max=2998  skew=36.8  gini=0.583
+photos with exactly 1 marking: 60.9%;  <=3: 83.7%;  >=100: 0.13%
+top 1% of photos hold 21.3% of all markings
+top 10% of photos hold 54.5% of all markings
+Hill tail exponent alpha (xmin=p50, floor 2): 2.06
+
+======== 4. TIME DYNAMICS, HORIZON & EARLY-SIGNAL (relative to UPLOAD time) ========
+lag upload->marking (hours): p10=0.86 p25=7.09 p50=66.43 p75=726.2 p90=2478 p99=5858
+share of markings within: 1h=10.7%, 24h=38.7%, 7d=59.7%, 30d=74.9%, 90d=88.3%, 365d=100.0%
+
+Horizon table (mature = photo uploaded at least H days before the last marking):
+ H_days  mature_photos share_of_all_their_markings_within_H share_with_0_markings_in_H  median_markings_in_H
+      1        2815862                                38.7%                      47.7%                   1.0
+      7        2782476                                59.2%                      31.1%                   1.0
+     30        2607718                                72.7%                      19.4%                   1.0
+     90        2125709                                84.1%                      10.4%                   1.0
+    365              0                                 0.0%                       nan%                   NaN
+
+TARGET = markings within 30 days of upload; mature photos = 2,607,718
+markings in first 30d: n=2,607,718  mean=2.23  median=1.0  p90=4.0  p99=24.0  max=823  skew=19.4  gini=0.637
+share with 0: 19.4%;  with 1: 51.0%;  >=10: 3.7%;  skew after log1p: 1.56
+candidate classification thresholds (markings in horizon): p50: >=1 -> 80.6% positive, p80: >=2 -> 29.6% positive, p90: >=4 -> 11.9% positive
+
+Early signal: windows after upload vs REMAINING markings in (window, 30d]. ('vs_total' is shown only to illustrate how misleading it is: it is mechanical.)
+ window_h share_photos_with_0_early  median_early  mean_early  spearman_vs_remaining  spearman_vs_total_MECHANICAL  mean_remaining
+        1                     77.8%           0.0       0.319                  0.031                         0.412           1.911
+        6                     62.6%           0.0       0.689                  0.012                         0.555           1.541
+       24                     49.2%           1.0       1.134                 -0.008                         0.675           1.095
+       72                     39.8%           1.0       1.492                 -0.019                         0.766           0.737
+      168                     32.6%           1.0       1.752                 -0.002                         0.840           0.477
+
+======== 5. TEMPORAL SPLIT, DRIFT & COLD-START ========
+split by upload time (mature photos only): cutoffs 1970-07-29 16:21:57.399999999 and 1970-09-15 12:39:25.699999999
+split  photos  mean  median  mean_log1p share_zero share_above_train_p80
+train 1825402  2.00     1.0        0.77      23.1%                 27.2%
+  val  391158  2.55     1.0        0.90      14.8%                 33.0%
+ test  391158  2.96     1.0        1.01       6.4%                 37.4%
+KS train vs test (log1p target): D=0.200, p=0;  median train=1.0 vs test=1.0
+COLD-START fans: test-photo markings by users never seen in train photos: 4.6% of markings, 22.5% of distinct fans
+COLD-START owners: test photos whose owner has no train photo: 35.5%
+
+======== 6. USER ACTIVITY (markings per fan) ========
+markings/user (sampled photos): n=334,291  mean=26.05  median=4.0  p90=48.0  p99=390.0  max=8170  skew=20.7  gini=0.827
+top 1% of fans make 33.3% of markings;  fans with exactly 1 marking: 30.1%
+distinct owners among sampled photos: 334,832
+duplicate (user, photo) markings: 0
+
+======== 7. SOCIAL GRAPH (flickr-growth) ========
+raw edges=33,140,018; duplicates removed=0; self-loops removed=1; kept=33,140,017
+users in graph: 2,302,925
+out-degree (users with >=1 out-edge): n=1,942,508  mean=17.06  median=1.0  p90=18.0  p99=310.0  max=26367  skew=36.1  gini=0.877
+in-degree  (users with >=1 in-edge): n=2,245,501  mean=14.76  median=1.0  p90=14.0  p99=281.0  max=21001  skew=25.0  gini=0.872
+reciprocity (reverse edge exists): 62.2%
+weakly connected components: 30,769; giant component = 94.4% of graph users
+distinct fans in graph: 85.7%;  markings by in-graph fans: 98.1%
+link timestamps: 2006-11-02 00:00:00 -> 2007-05-18 00:00:00;  134 distinct values; most common value holds 51.4% of edges (top: 2006-11-02 00:00:00: 17,034,806, 2007-02-03 00:00:00: 5,343,186, 2007-03-06 00:00:00: 295,895)
+  -> a large share on one value means the first-crawl snapshot was stamped with a single date: real creation time is unknown for those edges, so treat the graph as (almost) static.
+link time range overlaps the marking time range: False
+
+======== 8. SOCIAL EXPOSURE (descriptive; sampled photos) ========
+sampled 3,000 photos (>=2 markings) -> 21,082 markings; fan == owner in 0.00% of markings
+relevant links: 1,245,841
+   src_follows_dst: fan follows owner 50.9%;  fan follows an EARLIER fan 29.7%;  either 62.0%
+   dst_follows_src: fan follows owner 37.2%;  fan follows an EARLIER fan 27.1%;  either 50.8%
+  -> higher exposure under 'src_follows_dst' (configured: 'src_follows_dst').
+
+exposure type by marking position within photo:
+cat      both  earlier fan only  neither  owner only
+rk_b                                                
+1st     0.000             0.000    0.340       0.660
+2-5     0.156             0.051    0.381       0.412
+6-20    0.257             0.097    0.385       0.262
+21-100  0.276             0.181    0.413       0.130
+>100    0.229             0.338    0.370       0.063
+
+exposure type by time since upload:
+cat     both  earlier fan only  neither  owner only
+age_b                                              
+<1h    0.139             0.014    0.173       0.674
+1-24h  0.229             0.068    0.282       0.421
+1-7d   0.204             0.112    0.411       0.274
+>7d    0.160             0.160    0.477       0.202
+
+======== 9. LEAK-SAFE FEATURE SIGNAL (+ leakage demonstration) ========
+Target = log1p(markings in (24h, 30d]); mature photos n=1,000,000; share with 0 early markings: 49.2%
+                                                    feature                            status  spearman_vs_log_remaining
+                                         early_markings_24h                                ok                     -0.013
+                                            owner_followers                 ok (static graph)                      0.195
+                                            owner_following                 ok (static graph)                      0.184
+                                  early_fans_mean_followers                                ok                      0.226
+                                         owner_prior_photos    ok (uploads before this photo)                      0.135
+                                         owner_total_photos LEAK-ish (includes later uploads)                      0.115
+                                          views_crawl_total          LEAK (measured at crawl)                      0.324
+                                       comments_crawl_total          LEAK (measured at crawl)                      0.338
+                                  favorites_col_crawl_total          LEAK (measured at crawl)                      0.538
+   upload hour (eta^2) [meaningless if clock is anonymized]                                ok                      0.000
+upload weekday (eta^2) [meaningless if clock is anonymized]                                ok                      0.000
+(eta^2 rows are variance explained, not correlations.) LEAK rows show how a tempting column would inflate scores.
+saved 500,000 rows -> flickr_eda_output/photo_table_sample.csv (drop the LEAK columns before modelling)
+
+======== 10. HETEROGRAPH SIZE (for R-GCN / HGT) ========
+node types: User (id space 2,585,570), Photo (2,815,862 in this run; ~11,263,448 in full data)
+  src     relation   dst  edges_in_this_run  edges_full_data_estimate
+ User      follows  User           33140017                  33140017
+ User    favorites Photo            8706649                  34826596
+Photo favorited_by  User            8706649                  34826596
+ User      uploads Photo            2815862                  11263448
+Photo  uploaded_by  User            2815862                  11263448
+estimated total edges incl. reverse (full data): 125,320,105
+if the model may only see markings from the first 24h after upload, the favorites graph keeps 3,360,988 edges (38.6% of all markings)
+Raw data has no node attributes (no image, tags, text, or user profile): features must be engineered or learned.
+
+======== 11. DESIGN NOTES (rule-based; read together with the numbers above) ========
+1. Target (30d markings): median 1, skew 19.4 (log1p skew 1.6), 19% zeros. Use log1p regression, or a classification/hurdle formulation if zeros dominate.
+2. Smallest horizon capturing >=80% of a photo's observed markings: 90 days. A horizon below that measures a growth stage, not final popularity - decide which one you want to predict.
+3. Early markings predict REMAINING markings with Spearman 0.03 at best (window 1h); 77.8% of photos have no early marking at that window. Early counts are weak: lean on owner/social features and expect a low ceiling.
+4. Ignore 'vs total' correlations; they are mechanical.
+5. Never use views / comments / favorites columns or total-uploads-per-owner as features: they are crawl-time or future information (see LEAK rows in section 9).
+6. Target distribution shifts over time (KS D=0.20; median 1 -> 1): use a temporal split and consider recency-normalised targets.
+7. Cold start: 22% of test fans and 36% of test owners are unseen in train: avoid pure ID embeddings; prefer degree/activity features and neighbour aggregation (inductive).
+8. 51% of links share one timestamp (first-crawl snapshot): treat the social graph as static.
+9. In-degree is extremely skewed: log-transform degree features, cap neighbour fan-outs, use neighbour sampling.
+10. Social channel: 51% of sampled markings come from fans following the owner, 30% from fans following an earlier fan, 38% have no social path (discovery by search/Explore). Descriptive only; compute any exposure feature inside the early window.
+11. ~125,320,105 edges in the full heterograph: use mini-batch neighbour sampling around target photos (NeighborLoader/HGTLoader); full-batch R-GCN/HGT will not fit.
+12. Message passing must only use markings up to the prediction time: that keeps 38.6% of favorite edges. Build one graph snapshot per observation window.
+13. No node attributes exist: initialise Users with log-degree/activity features and Photos with early-window statistics + owner features; pure ID embeddings generalise poorly to new photos.
+14. XGBoost baseline: use photo_table_sample.csv (without LEAK columns); every graph model must beat it on the temporal test split.
+
+Done in 3.1 min. Outputs in ./flickr_eda_output/

@@ -47,7 +47,7 @@ def print_meta_paths():
 
 if __name__ == "__main__":
     # Point to the specific digg data folder
-    DATA_DIR = '/content/drive/MyDrive/Colab Notebooks/PopularityPrediction/data/digg'
+    DATA_DIR = '/content/drive/MyDrive/Colab Notebooks/PopularityPrediction/data/raw/digg'
     
     print_data_schemas(DATA_DIR)
     print_meta_paths()
