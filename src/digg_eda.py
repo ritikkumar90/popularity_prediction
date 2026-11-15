@@ -29,7 +29,7 @@ warnings.filterwarnings("ignore")
 # =============================== CONFIG ====================================
 DATA_DIR = os.environ.get(
     "DIGG_DIR",
-    "/content/drive/MyDrive/Colab Notebooks/PopularityPrediction/data/raw/digg",
+    "/content/drive/MyDrive/Colab Notebooks/PopularityPrediction/data/generated/digg",
 )
 if len(sys.argv) > 1 and os.path.isdir(sys.argv[1]):
     DATA_DIR = sys.argv[1]

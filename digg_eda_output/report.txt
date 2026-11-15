@@ -1,130 +1,128 @@
 
 ======== 1. LOADING ========
 Files: ['digg_friends.csv', 'digg_votes1.csv']
-votes file digg_votes1.csv: header=False, rows=3,018,197, mapping={'ts': 'c0', 'story': 'c2', 'user': 'c1'}
-friends file digg_friends.csv: header=False, rows=1,731,658, mapping={'mutual': 'c0', 'ts': 'c1', 'src': 'c2', 'dst': 'c3'}
+votes file digg_votes1.csv: header=False, rows=3,032,157, mapping={'ts': 'c0', 'story': 'c2', 'user': 'c1'}
+friends file digg_friends.csv: header=False, rows=1,722,920, mapping={'mutual': 'c0', 'ts': 'c1', 'src': 'c2', 'dst': 'c3'}
 
 ======== 2. VOTES OVERVIEW ========
-votes=3,018,197  stories=3,553  voters=139,409  duplicate (user,story) pairs=7,299
+votes=3,032,157  stories=3,553  voters=139,409  duplicate (user,story) pairs=7,333
 time range: 2009-05-31 11:43:41  ->  2009-07-05 11:29:52  (34 days)
-share of votes with a timestamp tie inside the same story: 1.65%  (ties make 'who voted first' ambiguous)
+share of votes with a timestamp tie inside the same story: 1.41%  (ties make 'who voted first' ambiguous)
 
 ======== 3. TARGET: STORY POPULARITY (final votes per story) ========
-votes/story: n=3,553  mean=849.48  median=528.0  p90=1786.8  p99=4824.0  max=24099  skew=6.3  gini=0.446
-skew after log1p: 0.99
-top 1% of stories hold 7.7% of all votes
-top 10% of stories hold 36.9% of all votes
-top 20% of stories hold 53.3% of all votes
-stories with <10 votes: 0.0%;  <50: 0.0%;  >=1000: 21.4%
-Hill tail exponent alpha (votes/story, xmin=p50): 2.44
+votes/story: n=3,553  mean=853.41  median=522.0  p90=1767.8  p99=4759.6  max=23855  skew=6.5  gini=0.454
+skew after log1p: 0.98
+top 1% of stories hold 8.0% of all votes
+top 10% of stories hold 37.7% of all votes
+top 20% of stories hold 53.9% of all votes
+stories with <10 votes: 0.0%;  <50: 0.0%;  >=1000: 21.5%
+Hill tail exponent alpha (votes/story, xmin=p50): 2.42
 
 Candidate label definitions (thresholds in votes):
                   rule  threshold  positives pos_rate
-popular = votes >= p50      528.0       1781    50.1%
-popular = votes >= p80     1071.6        711    20.0%
-popular = votes >= p90     1786.8        356    10.0%
+popular = votes >= p50      522.0       1780    50.1%
+popular = votes >= p80     1058.6        711    20.0%
+popular = votes >= p90     1767.8        356    10.0%
 
 ======== 4. TEMPORAL DYNAMICS & EARLY-SIGNAL STRENGTH ========
-story lifetime (hours, 1st->last vote): median=310.2  p90=651.0
+story lifetime (hours, 1st->last vote): median=267.6  p90=557.1
 stories younger than 48h at dataset end (right-censored): 0.0%
-time to  10th vote: reached by 100.0% of stories; median=0.41h  p90=1.15h
-time to  50th vote: reached by 100.0% of stories; median=3.90h  p90=11.58h
-time to 100th vote: reached by 100.0% of stories; median=9.30h  p90=21.09h
+time to  10th vote: reached by 100.0% of stories; median=0.38h  p90=0.87h
+time to  50th vote: reached by 100.0% of stories; median=2.44h  p90=3.01h
+time to 100th vote: reached by 100.0% of stories; median=3.51h  p90=7.09h
 
-Early votes vs final popularity (mature stories, n=3,553):
+Early votes vs final popularity (mature stories, n=3,552):
  window_h  median_votes_in_window  median_share_of_final only_submitter_vote  spearman_vs_final  spearman_vs_remaining_votes
-     0.25                     6.0                  0.010                5.9%              0.004                       -0.011
-     0.50                    11.0                  0.020                1.5%              0.037                        0.013
-     1.00                    20.0                  0.036                0.5%              0.062                        0.026
-     2.00                    33.0                  0.060                0.3%              0.096                        0.036
-     6.00                    65.0                  0.135                0.1%              0.162                       -0.105
-    12.00                   163.0                  0.333                0.0%              0.348                       -0.133
-    24.00                   388.0                  0.809                0.0%              0.803                        0.295
+     0.25                     7.0                  0.012                0.9%              0.025                        0.013
+     0.50                    12.0                  0.020                0.1%              0.027                        0.009
+     1.00                    19.0                  0.035                0.0%              0.029                        0.002
+     2.00                    33.0                  0.060                0.0%             -0.015                       -0.058
+     6.00                   134.0                  0.237                0.0%              0.543                        0.458
+    12.00                   209.0                  0.419                0.0%              0.759                        0.599
+    24.00                   407.0                  0.820                0.0%              0.973                        0.777
 
 ======== 5. TEMPORAL SPLIT, DRIFT & COLD-START ========
-split by story first-vote time at 2009-06-23 14:06:21 and 2009-06-28 00:11:15
+split by story first-vote time at 2009-06-23 16:36:23.200000048 and 2009-06-27 23:11:51.599999905
 split  stories  mean_votes  median_votes  mean_log_votes share_above_train_p80
-train     2487      852.80         544.0            6.44                 20.0%
-  val      533      849.20         490.0            6.39                 19.3%
- test      533      834.26         492.0            6.38                 19.1%
-KS test train vs test (log votes): D=0.079, p=0.00827  -> distribution DRIFTS across time
-COLD-START: test-story votes from users never seen in train stories: 5.0% of votes, 16.9% of users
+train     2487      854.30         523.0            6.42                 20.0%
+  val      533      879.28         534.0            6.44                 20.5%
+ test      533      823.39         503.0            6.38                 19.3%
+KS test train vs test (log votes): D=0.048, p=0.245  -> no strong drift
+COLD-START: test-story votes from users never seen in train stories: 1.9% of votes, 11.1% of users
 
 ======== 6. USER ACTIVITY (votes per user) ========
-votes/user: n=139,409  mean=21.65  median=4.0  p90=45.0  p99=287.0  max=10526  skew=26.1  gini=0.793
-top 1% of users cast 28.0% of votes;  users with exactly 1 vote: 27.8%
-Hill tail exponent alpha (votes/user, xmin=p50): 1.65
+votes/user: n=139,409  mean=21.75  median=4.0  p90=48.0  p99=337.0  max=2740  skew=7.4  gini=0.795
+top 1% of users cast 23.0% of votes;  users with exactly 1 vote: 34.1%
+Hill tail exponent alpha (votes/user, xmin=p50): 1.61
 
 ======== 7. FRIEND (SOCIAL) GRAPH ========
-edges=1,731,658  duplicate edges=0  self-loops=5
-users in friend graph: 279,630
-out-degree (users with >=1 out-edge): n=71,366  mean=24.26  median=3.0  p90=38.0  p99=472.0  max=995  skew=6.8  gini=0.836
-in-degree  (users with >=1 in-edge): n=258,217  mean=6.71  median=1.0  p90=8.0  p99=101.0  max=12038  skew=92.0  gini=0.787
-reciprocity (edges whose reverse edge exists): 21.2%
-'mutual' flag: 51.2% of rows flagged mutual; of those, reverse row present in 41.4%
+edges=1,722,920  duplicate edges=0  self-loops=5
+users in friend graph: 279,629
+out-degree (users with >=1 out-edge): n=71,305  mean=24.16  median=5.0  p90=48.0  p99=441.0  max=3616  skew=7.5  gini=0.781
+in-degree  (users with >=1 in-edge): n=259,862  mean=6.63  median=2.0  p90=13.0  p99=72.0  max=6268  skew=63.2  gini=0.716
+reciprocity (edges whose reverse edge exists): 19.3%
+'mutual' flag: 51.2% of rows flagged mutual; of those, reverse row present in 37.7%
   -> mutual links are NOT always stored in both directions: add reverse edges before building the graph.
-weakly connected components: 6,863; largest holds 93.5% of graph users
-voters present in friend graph: 59.4%;  votes cast by in-graph users: 82.4%
-in-graph users who never voted: 196,816
-friend_date range: 2005-08-06 13:22:50 -> 2009-07-08 06:00:05  (rows with ts<=0: 1,670)
-LEAKAGE: 4.1% of friend edges are created AFTER the train/val cutoff. Filter edges by friend_date <= prediction time when building graph features.
+weakly connected components: 365; largest holds 99.7% of graph users
+voters present in friend graph: 85.0%;  votes cast by in-graph users: 98.9%
+in-graph users who never voted: 161,131
+friend_date range: 2006-06-01 00:29:16 -> 2009-07-08 06:00:05  (rows with ts<=0: 1,662)
+LEAKAGE: 4.8% of friend edges are created AFTER the train/val cutoff. Filter edges by friend_date <= prediction time when building graph features.
 
 ======== 8. SOCIAL INFLUENCE: were voters 'exposed' to an earlier friend vote? ========
-sampled 300 stories, 238,526 votes, 412,620 relevant friend edges
-  direction  src_follows_dst: 23.9% of votes had >=1 earlier-voting friend (mean #exposing friends among exposed: 11.43)
-  direction  dst_follows_src: 24.3% of votes had >=1 earlier-voting friend (mean #exposing friends among exposed: 9.03)
+sampled 300 stories, 251,159 votes, 639,029 relevant friend edges
+  direction  src_follows_dst: 47.8% of votes had >=1 earlier-voting friend (mean #exposing friends among exposed: 6.22)
+  direction  dst_follows_src: 54.2% of votes had >=1 earlier-voting friend (mean #exposing friends among exposed: 5.20)
   -> the higher-exposure direction is 'dst_follows_src'. Configured FOLLOW_DIRECTION = 'src_follows_dst'.  CHECK: you may want to flip FOLLOW_DIRECTION.
 
 Exposure rate by vote position in the story's cascade:
            mean    size
 bucket                 
 1st       0.000     300
-2-10      0.716    2700
-11-100    0.586   27000
-101-1000  0.202  153821
->1000     0.151   54705
-Spearman(story exposure share, final votes) = -0.821
+2-10      0.003    2700
+11-100    0.375   27000
+101-1000  0.515  140949
+>1000     0.466   80210
+Spearman(story exposure share, final votes) = 0.461
 
 ======== 9. SUBMITTER ('submits' edge) & QUICK FEATURE-SIGNAL TABLE ========
-first voter treated as submitter. Stories where the earliest timestamp is tied: 0.0%
-distinct submitters: 588; stories/submitter: median=2 max=76; top 1% submitters own 7.7% of stories
+first voter treated as submitter. Stories where the earliest timestamp is tied: 0.8%
+distinct submitters: 2,992; stories/submitter: median=1 max=8; top 1% submitters own 3.8% of stories
 
 Feature signal using only information from the first 1h (mature stories):
             feature  spearman_vs_log_final  spearman_vs_log_remaining
-     early_votes_1h                  0.062                      0.026
-      early_fol_sum                 -0.091                     -0.121
-     early_fol_mean                 -0.260                     -0.261
-      early_fol_max                  0.009                     -0.007
-     early_in_graph                 -0.176                     -0.171
-submitter_followers                  0.025                      0.019
-submitter_n_stories                  0.054                      0.045
-       hour (eta^2)                  0.011                      0.012
-        dow (eta^2)                  0.013                      0.015
+     early_votes_1h                  0.029                      0.002
+      early_fol_sum                  0.028                      0.012
+     early_fol_mean                  0.019                      0.015
+      early_fol_max                  0.022                      0.012
+     early_in_graph                  0.004                      0.008
+submitter_followers                  0.030                      0.029
+submitter_n_stories                  0.008                      0.008
+       hour (eta^2)                  0.005                      0.005
+        dow (eta^2)                  0.001                      0.001
 (hour/dow rows show eta^2 = variance explained, not a correlation.)
 
 Saved per-story table with baseline XGBoost features -> digg_eda_output/story_table.csv
 
 ======== 10. HETEROGRAPH SIZE (for R-GCN / HGT) ========
-node types: User=336,225 (voters=139,409), Story=3,553
+node types: User=300,540 (voters=139,409), Story=3,553
   src     relation   dst   edges
- User      follows  User 1731653
- User    votes_for Story 3018197
-Story     voted_by  User 3018197
+ User      follows  User 1722915
+ User    votes_for Story 3032157
+Story     voted_by  User 3032157
  User      submits Story    3553
 Story submitted_by  User    3553
-total edges (with reverse): 7,775,153
-avg votes/story=849, avg votes/user=21.6
-if the model may only see votes from the first 1h of each story, the vote graph keeps 84,082 edges (2.8% of all)
+total edges (with reverse): 7,794,335
+avg votes/story=853, avg votes/user=21.8
+if the model may only see votes from the first 1h of each story, the vote graph keeps 71,678 edges (2.4% of all)
 There are NO node attributes in the raw data (no story title/topic/user profile): node features must be engineered or learned.
 
 ======== 11. DESIGN NOTES (rule-based, read together with the numbers above) ========
-1. Target is heavy-tailed (skew 6.3; 1.0 after log1p): regress on log1p(votes) or use quantile classes; plain MSE on raw counts will be dominated by a few viral stories.
+1. Target is heavy-tailed (skew 6.5; 1.0 after log1p): regress on log1p(votes) or use quantile classes; plain MSE on raw counts will be dominated by a few viral stories.
 2. Early-vote Spearman reaches 0.8 at window = 24.0h.
 3. Pick the observation window from the early-signal table: the smallest window with a good 'vs remaining votes' correlation. Build ALL features and ALL graph edges from that window only.
-4. Popularity drifts over time: use a temporal split (as done here), never a random split.
-5. Only 59% of voters appear in the friend graph: many User nodes will have no 'follows' edges.
-6. 24% of votes (whole cascade) follow an earlier friend vote; Spearman(exposure, popularity)=-0.82. Caution: this is measured over the FULL cascade and is partly mechanical (big cascades are exposed by chance). It shows the 'follows' edges carry cascade structure, but as a model feature recompute exposure ONLY inside the early window, otherwise it leaks the future.
-7. Degrees are extremely skewed: use neighbour sampling (e.g. PyG NeighborLoader) with capped fan-outs, and log-transform degree features.
-8. Graph is large for full-batch training: mini-batch around the target stories with sampling.
-9. No raw node attributes exist: for R-GCN/HGT initialise User nodes with log-degree/activity features (or learned embeddings) and Story nodes with early-window statistics (early votes, early voter followers).
-10. XGBoost baseline: start from story_table.csv; it is the reference every graph model must beat. Check the feature-signal table to see which engineered features carry information.
+4. 48% of votes (whole cascade) follow an earlier friend vote; Spearman(exposure, popularity)=0.46. Caution: this is measured over the FULL cascade and is partly mechanical (big cascades are exposed by chance). It shows the 'follows' edges carry cascade structure, but as a model feature recompute exposure ONLY inside the early window, otherwise it leaks the future.
+5. Degrees are extremely skewed: use neighbour sampling (e.g. PyG NeighborLoader) with capped fan-outs, and log-transform degree features.
+6. Graph is large for full-batch training: mini-batch around the target stories with sampling.
+7. No raw node attributes exist: for R-GCN/HGT initialise User nodes with log-degree/activity features (or learned embeddings) and Story nodes with early-window statistics (early votes, early voter followers).
+8. XGBoost baseline: start from story_table.csv; it is the reference every graph model must beat. Check the feature-signal table to see which engineered features carry information.

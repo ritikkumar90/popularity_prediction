@@ -1,90 +1,90 @@
 {
   "views": {
-    "n": 2801010,
-    "mean": 179.25027579337453,
-    "median": 67.0,
-    "p90": 316.0,
-    "p99": 1850.0,
-    "max": 391423.0,
-    "skew": 103.20649434445573,
-    "gini": 0.6993703745101482
+    "n": 1214,
+    "mean": 4069.461285008237,
+    "median": 1428.5,
+    "p90": 8676.300000000001,
+    "p99": 44809.95999999969,
+    "max": 395492.0,
+    "skew": 21.088202719062565,
+    "gini": 0.68936590416002
   },
   "comments": {
-    "n": 2801010,
-    "mean": 4.628587188192831,
-    "median": 2.0,
-    "p90": 12.0,
-    "p99": 44.0,
-    "max": 1753.0,
-    "skew": 14.534093841526351,
-    "gini": 0.7210329177773755
+    "n": 1214,
+    "mean": 13.707578253706755,
+    "median": 5.0,
+    "p90": 26.0,
+    "p99": 129.0,
+    "max": 926.0,
+    "skew": 14.242620589519383,
+    "gini": 0.7000468860430565
   },
   "favs_meta": {
-    "n": 2801010,
-    "mean": 3.119557588155701,
-    "median": 1.0,
-    "p90": 5.0,
-    "p99": 32.0,
-    "max": 3018.0,
-    "skew": 36.70485818217334,
-    "gini": 0.5847395102602718
+    "n": 1214,
+    "mean": 97.75370675453048,
+    "median": 75.0,
+    "p90": 151.70000000000005,
+    "p99": 384.78999999999814,
+    "max": 2737.0,
+    "skew": 16.72414825037701,
+    "gini": 0.2860860470059969
   },
   "photos_per_owner": {
-    "n": 545769,
-    "mean": 20.64485157639954,
-    "median": 3.0,
-    "p90": 40.0,
-    "p99": 313.0,
-    "max": 5853.0,
-    "skew": 14.525257955117121,
-    "gini": 0.8117431771329311
+    "n": 4643,
+    "mean": 1.0768899418479432,
+    "median": 1.0,
+    "p90": 1.0,
+    "p99": 3.0,
+    "max": 9.0,
+    "skew": 7.509503713368583,
+    "gini": 0.06789231100581523
   },
   "n_marks": {
-    "n": 2807328,
-    "mean": 3.1014006913335384,
-    "median": 1.0,
-    "p90": 5.0,
-    "p99": 32.0,
-    "max": 2998.0,
-    "skew": 36.78512763285711,
-    "gini": 0.5834516044270022
+    "n": 1223,
+    "mean": 97.28618152085036,
+    "median": 75.0,
+    "p90": 151.79999999999995,
+    "p99": 381.6999999999996,
+    "max": 2724.0,
+    "skew": 16.767222462669533,
+    "gini": 0.28547571819718526
   },
   "lag_quantiles_h": {
-    "p10": 0.8611111111111112,
-    "p25": 7.091666666666667,
-    "p50": 66.43069444444444,
-    "p75": 726.224375,
-    "p90": 2478.4161388888892,
-    "p99": 5858.088399999992
+    "p10": 32.795,
+    "p25": 64.22694444444444,
+    "p50": 192.88472222222222,
+    "p75": 736.3919444444444,
+    "p90": 1824.1616666666666,
+    "p99": 5333.740222222215
   },
   "horizon_table": [
     {
       "H_days": 1,
-      "mature_photos": 2815862,
-      "share_of_all_their_markings_within_H": "38.7%",
-      "share_with_0_markings_in_H": "47.7%",
-      "median_markings_in_H": 1.0
+      "mature_photos": 1223,
+      "share_of_all_their_markings_within_H": "7.5%",
+      "share_with_0_markings_in_H": "5.6%",
+      "median_markings_in_H": 7.0
     },
     {
       "H_days": 7,
-      "mature_photos": 2782476,
-      "share_of_all_their_markings_within_H": "59.2%",
-      "share_with_0_markings_in_H": "31.1%",
-      "median_markings_in_H": 1.0
+      "mature_photos": 1223,
+      "share_of_all_their_markings_within_H": "47.3%",
+      "share_with_0_markings_in_H": "0.2%",
+      "median_markings_in_H": 41.0
     },
     {
       "H_days": 30,
-      "mature_photos": 2607718,
-      "share_of_all_their_markings_within_H": "72.7%",
-      "share_with_0_markings_in_H": "19.4%",
-      "median_markings_in_H": 1.0
+      "mature_photos": 1123,
+      "share_of_all_their_markings_within_H": "72.5%",
+      "share_with_0_markings_in_H": "0.0%",
+      "median_markings_in_H": 58.0
     },
     {
       "H_days": 90,
-      "mature_photos": 2125709,
-      "share_of_all_their_markings_within_H": "84.1%",
-      "share_with_0_markings_in_H": "10.4%",
-      "median_markings_in_H": 1.0
+      "mature_photos": 864,
+      "share_of_all_their_markings_within_H": "89.7%",
+      "share_with_0_markings_in_H": "0.0%",
+      "median_markings_in_H": 70.0
     },
     {
       "H_days": 365,
@@ -95,172 +95,172 @@
     }
   ],
   "target": {
-    "n": 2607718,
-    "mean": 2.2294205124940656,
-    "median": 1.0,
-    "p90": 4.0,
-    "p99": 24.0,
-    "max": 823.0,
-    "skew": 19.37235532486415,
-    "gini": 0.6366105348210381,
-    "share_zero": 0.19365744302106286,
-    "log_skew": 1.5642506185823384
+    "n": 1123,
+    "mean": 70.91985752448798,
+    "median": 58.0,
+    "p90": 108.80000000000007,
+    "p99": 238.79999999999973,
+    "max": 1563.0,
+    "skew": 15.135167834140159,
+    "gini": 0.25271697478940114,
+    "share_zero": 0.0,
+    "log_skew": 1.6424364895434396
   },
   "early_signal": [
     {
       "window_h": 1,
-      "share_photos_with_0_early": "77.8%",
+      "share_photos_with_0_early": "67.8%",
       "median_early": 0.0,
-      "mean_early": 0.31862110857078874,
-      "spearman_vs_remaining": 0.03091623438274785,
-      "spearman_vs_total_MECHANICAL": 0.4121660633851463,
-      "mean_remaining": 1.910799403923277
+      "mean_early": 0.6749777382012466,
+      "spearman_vs_remaining": -0.027882935012535977,
+      "spearman_vs_total_MECHANICAL": 0.030584914026667614,
+      "mean_remaining": 70.24487978628673
     },
     {
       "window_h": 6,
-      "share_photos_with_0_early": "62.6%",
-      "median_early": 0.0,
-      "mean_early": 0.6888263991735303,
-      "spearman_vs_remaining": 0.01177245076773004,
-      "spearman_vs_total_MECHANICAL": 0.5551829698205549,
-      "mean_remaining": 1.5405941133205354
+      "share_photos_with_0_early": "22.0%",
+      "median_early": 3.0,
+      "mean_early": 3.1772039180765805,
+      "spearman_vs_remaining": -0.08164001608186947,
+      "spearman_vs_total_MECHANICAL": 0.06260642266774903,
+      "mean_remaining": 67.7426536064114
     },
     {
       "window_h": 24,
-      "share_photos_with_0_early": "49.2%",
-      "median_early": 1.0,
-      "mean_early": 1.1340328977289722,
-      "spearman_vs_remaining": -0.00808606379717562,
-      "spearman_vs_total_MECHANICAL": 0.6746546483897624,
-      "mean_remaining": 1.0953876147650934
+      "share_photos_with_0_early": "5.3%",
+      "median_early": 7.0,
+      "mean_early": 7.2689225289403385,
+      "spearman_vs_remaining": -0.142224662731478,
+      "spearman_vs_total_MECHANICAL": 0.07377605151167517,
+      "mean_remaining": 63.650934995547644
     },
     {
       "window_h": 72,
-      "share_photos_with_0_early": "39.8%",
-      "median_early": 1.0,
-      "mean_early": 1.4924696612133674,
-      "spearman_vs_remaining": -0.018951235192494274,
-      "spearman_vs_total_MECHANICAL": 0.7658289009760381,
-      "mean_remaining": 0.7369508512806983
+      "share_photos_with_0_early": "0.8%",
+      "median_early": 26.0,
+      "mean_early": 27.021371326803205,
+      "spearman_vs_remaining": -0.2505881839850453,
+      "spearman_vs_total_MECHANICAL": 0.22855130823267408,
+      "mean_remaining": 43.898486197684775
     },
     {
       "window_h": 168,
-      "share_photos_with_0_early": "32.6%",
-      "median_early": 1.0,
-      "mean_early": 1.7524513770277308,
-      "spearman_vs_remaining": -0.0024211903373141256,
-      "spearman_vs_total_MECHANICAL": 0.8399401216059198,
-      "mean_remaining": 0.47696913546633496
+      "share_photos_with_0_early": "0.2%",
+      "median_early": 41.0,
+      "mean_early": 44.591273374888694,
+      "spearman_vs_remaining": 0.40847395810106296,
+      "spearman_vs_total_MECHANICAL": 0.8287854195108358,
+      "mean_remaining": 26.328584149599287
     }
   ],
   "split": {
-    "ks_D": 0.19975689497338672,
-    "ks_p": 0.0,
-    "median_train": 1.0,
-    "median_test": 1.0
+    "ks_D": 0.27215923634009365,
+    "ks_p": 1.3956778823160329e-09,
+    "median_train": 56.0,
+    "median_test": 65.0
   },
-  "cold_fans": 0.22458292751892928,
-  "cold_owners": 0.35513270852187606,
+  "cold_fans": 0.2687071348142082,
+  "cold_owners": 0.9585798816568047,
   "marks_per_user": {
-    "n": 334291,
-    "mean": 26.045119372044116,
-    "median": 4.0,
-    "p90": 48.0,
-    "p99": 390.0,
-    "max": 8170.0,
-    "skew": 20.725772982590694,
-    "gini": 0.8272655104551143
+    "n": 33572,
+    "mean": 3.544054569283927,
+    "median": 2.0,
+    "p90": 7.0,
+    "p99": 33.0,
+    "max": 155.0,
+    "skew": 9.069975769748588,
+    "gini": 0.5646109548724983
   },
   "out_degree": {
-    "n": 1942508,
-    "mean": 17.06042755036273,
-    "median": 1.0,
-    "p90": 18.0,
-    "p99": 310.0,
-    "max": 26367.0,
-    "skew": 36.13062011887389,
-    "gini": 0.8768016972875065
+    "n": 126449,
+    "mean": 15.81656636272331,
+    "median": 4.0,
+    "p90": 33.0,
+    "p99": 172.0,
+    "max": 2447.0,
+    "skew": 17.841873906781846,
+    "gini": 0.7326632319348637
   },
   "in_degree": {
-    "n": 2245501,
-    "mean": 14.758406698549678,
-    "median": 1.0,
-    "p90": 14.0,
-    "p99": 281.0,
-    "max": 21001.0,
-    "skew": 24.977942351915093,
-    "gini": 0.8723252613278545
+    "n": 137254,
+    "mean": 14.571444183776064,
+    "median": 4.0,
+    "p90": 29.0,
+    "p99": 173.0,
+    "max": 12694.0,
+    "skew": 81.87342763823403,
+    "gini": 0.7506014098988192
   },
-  "reciprocity": 0.621710061283312,
-  "fans_in_graph": 0.8568373064186592,
-  "top_date_share": 0.5140252643805222,
+  "reciprocity": 0.6211684164262904,
+  "fans_in_graph": 0.984332181579888,
+  "top_date_share": 0.48925719091455006,
   "exposure": {
-    "owner": 0.5094867659614837,
-    "fan": 0.29741011289251496,
-    "neither": 0.3802295797362679,
+    "owner": 0.01905346231751288,
+    "fan": 0.419747690807776,
+    "neither": 0.567897395382456,
     "best_direction": "src_follows_dst"
   },
   "feature_signal": [
     {
       "feature": "early_markings_24h",
       "status": "ok",
-      "spearman_vs_log_remaining": -0.01335086577854812
+      "spearman_vs_log_remaining": -0.142224662731478
     },
     {
       "feature": "owner_followers",
       "status": "ok (static graph)",
-      "spearman_vs_log_remaining": 0.1951925637255896
+      "spearman_vs_log_remaining": 0.01178241857233286
     },
     {
       "feature": "owner_following",
       "status": "ok (static graph)",
-      "spearman_vs_log_remaining": 0.18389805777367219
+      "spearman_vs_log_remaining": 0.011611438321128589
     },
     {
       "feature": "early_fans_mean_followers",
       "status": "ok",
-      "spearman_vs_log_remaining": 0.22602443945523334
+      "spearman_vs_log_remaining": -0.026257828780303957
     },
     {
       "feature": "owner_prior_photos",
       "status": "ok (uploads before this photo)",
-      "spearman_vs_log_remaining": 0.1345340338120549
+      "spearman_vs_log_remaining": 0.015736205458260308
     },
     {
       "feature": "owner_total_photos",
       "status": "LEAK-ish (includes later uploads)",
-      "spearman_vs_log_remaining": 0.11486309896008616
+      "spearman_vs_log_remaining": -0.03877586069411944
     },
     {
       "feature": "views_crawl_total",
       "status": "LEAK (measured at crawl)",
-      "spearman_vs_log_remaining": 0.32396231467008746
+      "spearman_vs_log_remaining": 0.5035062147855313
     },
     {
       "feature": "comments_crawl_total",
       "status": "LEAK (measured at crawl)",
-      "spearman_vs_log_remaining": 0.3383625485118322
+      "spearman_vs_log_remaining": 0.49726912347499497
     },
     {
       "feature": "favorites_col_crawl_total",
       "status": "LEAK (measured at crawl)",
-      "spearman_vs_log_remaining": 0.5383613078883126
+      "spearman_vs_log_remaining": 0.8997545596932252
     },
     {
       "feature": "upload hour (eta^2) [meaningless if clock is anonymized]",
       "status": "ok",
-      "spearman_vs_log_remaining": 2.3603851229650112e-05
+      "spearman_vs_log_remaining": 0.018830362299716064
     },
     {
       "feature": "upload weekday (eta^2) [meaningless if clock is anonymized]",
       "status": "ok",
-      "spearman_vs_log_remaining": 7.153731606847439e-06
+      "spearman_vs_log_remaining": 0.002750957502881898
     }
   ],
   "graph": {
-    "total_edges_full": 125320105,
-    "users": 2585570,
-    "photos_full": 11263448
+    "total_edges_full": 2961621,
+    "users": 200001,
+    "photos_full": 4892
   },
-  "early_edge_share": 0.3860254387193052
+  "early_edge_share": 0.0747430261974601
 }

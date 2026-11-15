@@ -1,23 +1,4 @@
-"""Train PopularityHGT (HGT or RGCN backbone) on the sharded subgraphs. No config files.
-
-Hyperparameters live in the DEFAULTS block below and in models/hgt.py; every one of them
-can also be set from the command line (run with --help to see the flags).
-
-Pipeline (run these first, in order):
-    1. splitter.py     -> data/splits/<dataset>/{split_meta,labels}.parquet
-    2. features.py     -> outputs/<dataset>/samples/<hash>/shard_*.pt
-    3. this file       -> outputs/<dataset>/ml/<conv><tag>_best.pt (+ _config.json)
-
-Usage
------
-    python -m src.ml.train --dataset flickr --epochs 30
-    python -m src.ml.train --dataset digg --conv rgcn --num-bases 2 --edge-dropout 0.2 \
-        --conv-dropout 0.3 --weight-decay 1e-2 --patience 8 --loss huber
-    python -m src.ml.train --help        # list all tunable flags
-
-Loss is MSE (or Huber) on log1p(label). Best epoch is chosen by validation MSLE, whatever
-the training loss is, so runs with different --loss values stay comparable.
-"""
+"""Train PopularityHGT (HGT or RGCN backbone) on the sharded subgraphs. No config files."""
 from __future__ import annotations
 
 import argparse
@@ -30,8 +11,7 @@ import numpy as np
 import torch
 import torch.nn as nn
 
-# from src.ml.dataset import get_dataloaders
-from src.ml.dataset_ram import get_dataloaders_ram as get_dataloaders       # no config object needed
+from src.ml.dataset_ram import get_dataloaders_ram as get_dataloaders
 from src.ml.models.hgt import (
     PopularityHGT, get_batch_dict, DEFAULT_METADATA,
     DROPOUT, HIDDEN_CHANNELS, NUM_HEADS, NUM_LAYERS,
@@ -45,10 +25,12 @@ log = logging.getLogger(__name__)
 # ============================================================================ #
 # TRAINING DEFAULTS  (override with CLI flags, e.g. --lr 1e-4)
 # ============================================================================ #
-EPOCHS = 30
+EPOCHS = 40
 BATCH_SIZE = 32
 LR = 1e-3
 WEIGHT_DECAY = 1e-4
+GRAD_CLIP = 1.0
+SCHEDULER = "cosine"
 NUM_WORKERS = 0          # dataloader workers (0 = load in the main process)
 SEED = 42
 CLAMP_MAX_LOG = 20.0     # expm1 is applied to predictions clamped to [0, this] -> MAE can't overflow
@@ -66,7 +48,6 @@ def build_optimizer(model: nn.Module, lr: float, weight_decay: float, wd_split: 
     params = [p for p in model.parameters() if p.requires_grad]
     if not wd_split:
         return torch.optim.AdamW(params, lr=lr, weight_decay=weight_decay)
-    # no weight decay on biases / norm parameters (1-D tensors)
     decay = [p for p in params if p.ndim > 1]
     no_decay = [p for p in params if p.ndim <= 1]
     return torch.optim.AdamW(
@@ -126,7 +107,7 @@ def export_embeddings(model, loaders: dict, device, path: Path) -> None:
 
 def train_hgt(
     base_path: str | Path = ".",
-    dataset_name: str = "flickr",
+    dataset_name: str = "digg",
     *,
     output_dir: str = "outputs",
     # --- optimisation ---
@@ -134,12 +115,12 @@ def train_hgt(
     batch_size: int = BATCH_SIZE,
     lr: float = LR,
     weight_decay: float = WEIGHT_DECAY,
-    wd_split: bool = False,
-    loss: str = "mse",
-    huber_delta: float = 1.0,
-    scheduler: str = "none",
-    grad_clip: float = 0.0,
-    patience: int = 0,
+    wd_split: bool = True,
+    loss: str = "huber",
+    huber_delta: float = 0.5,
+    scheduler: str = SCHEDULER,
+    grad_clip: float = GRAD_CLIP,
+    patience: int = 10,
     seed: int = SEED,
     clamp_max_log: float = CLAMP_MAX_LOG,
     # --- model ---
@@ -162,21 +143,22 @@ def train_hgt(
     schema: str = "batch",
     # --- data / io ---
     num_workers: int = NUM_WORKERS,
-    config_hash: str | None = None,   # None = latest folder in samples/
+    config_hash: str | None = None,
     tag: str = "",
     export_emb: bool = False,
 ) -> dict:
     set_seed(seed)
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    log.info("Using device: %s | Batch Size: %d | conv=%s | seed=%d", device, batch_size, conv, seed)
+    log.info("Using device: %s | Batch Size: %d | conv=%s | readout=%s | seed=%d",
+             device, batch_size, conv, readout, seed)
 
     base_path = Path(base_path)
     ml_dir = base_path / output_dir / dataset_name / "ml"
     ml_dir.mkdir(parents=True, exist_ok=True)
     run_name = f"{conv}{tag}"
-    model_save_path = ml_dir / f"{run_name}_best.pt"
+    model_save_path = ml_dir / f"{run_name}_{dataset_name}_best.pt"
 
-    # 1. Load data (config_hash=None -> the most recent features folder)
+    # 1. Load data
     train_loader, val_loader, test_loader = get_dataloaders(
         base_path,
         dataset_name,
@@ -211,16 +193,16 @@ def train_hgt(
         output_act=output_act,
     ).to(device)
 
-    # Dummy forward pass to initialize lazy Linear layers (eval mode: no edge dropout)
+    # Dummy forward pass to initialize LazyBatchNorm1d and LazyLinear layers
     log.info("Initializing lazy layers...")
-    model.eval()
+    model.train()
     with torch.no_grad():
         sample_batch = sample_batch.to(device)
         _ = model(sample_batch.x_dict, sample_batch.edge_index_dict, get_batch_dict(sample_batch))
     n_params = sum(p.numel() for p in model.parameters())
     log.info("Model parameters: %d", n_params)
 
-    # 3. Optimizer, loss, scheduler (created after lazy init so all parameters exist)
+    # 3. Optimizer, loss, scheduler
     criterion = nn.HuberLoss(delta=huber_delta) if loss == "huber" else nn.MSELoss()
     optimizer = build_optimizer(model, lr, weight_decay, wd_split)
     if scheduler == "cosine":
@@ -266,7 +248,7 @@ def train_hgt(
         if sched is not None:
             sched.step(val["msle"]) if scheduler == "plateau" else sched.step()
 
-        # 6. Checkpoint best model + early stopping (both on validation MSLE)
+        # 6. Checkpoint best model + early stopping
         if val["msle"] < best_val:
             best_val, best_epoch, bad_epochs = val["msle"], epoch, 0
             torch.save(model.state_dict(), model_save_path)
@@ -314,7 +296,7 @@ def train_hgt(
 def _parse_args() -> argparse.Namespace:
     p = argparse.ArgumentParser(description="Train PopularityHGT / RGCN on the extracted subgraph features.")
     # data / io
-    p.add_argument("--dataset", default="flickr")
+    p.add_argument("--dataset", default="digg")
     p.add_argument("--base-path", default=".")
     p.add_argument("--output-dir", default="outputs")
     p.add_argument("--config-hash", default=None,
@@ -329,12 +311,12 @@ def _parse_args() -> argparse.Namespace:
     p.add_argument("--batch-size", type=int, default=BATCH_SIZE)
     p.add_argument("--lr", type=float, default=LR)
     p.add_argument("--weight-decay", type=float, default=WEIGHT_DECAY)
-    p.add_argument("--wd-split", action="store_true", help="no weight decay on biases / norm params")
-    p.add_argument("--loss", choices=["mse", "huber"], default="mse")
-    p.add_argument("--huber-delta", type=float, default=1.0)
-    p.add_argument("--scheduler", choices=["none", "cosine", "plateau"], default="none")
-    p.add_argument("--grad-clip", type=float, default=0.0, help="max grad norm (0 = off)")
-    p.add_argument("--patience", type=int, default=0, help="early-stopping patience in epochs (0 = off)")
+    p.add_argument("--wd-split", action="store_true", default=True, help="no weight decay on biases / norm params")
+    p.add_argument("--loss", choices=["mse", "huber"], default="huber")
+    p.add_argument("--huber-delta", type=float, default=0.5)
+    p.add_argument("--scheduler", choices=["none", "cosine", "plateau"], default=SCHEDULER)
+    p.add_argument("--grad-clip", type=float, default=GRAD_CLIP, help="max grad norm (0 = off)")
+    p.add_argument("--patience", type=int, default=10, help="early-stopping patience in epochs (0 = off)")
     p.add_argument("--clamp-max-log", type=float, default=CLAMP_MAX_LOG)
     # model
     p.add_argument("--conv", choices=list(CONV_CHOICES), default=CONV)
@@ -352,7 +334,7 @@ def _parse_args() -> argparse.Namespace:
     p.add_argument("--conv-dropout", type=float, default=CONV_DROPOUT)
     p.add_argument("--edge-dropout", type=float, default=EDGE_DROPOUT)
     p.add_argument("--head-layers", type=int, default=HEAD_LAYERS)
-    p.add_argument("--head-hidden", type=int, default=HEAD_HIDDEN, help="default: hidden_channels // 2")
+    p.add_argument("--head-hidden", type=int, default=HEAD_HIDDEN, help="default: hidden_channels")
     p.add_argument("--output-act", choices=list(OUTPUT_ACT_CHOICES), default=OUTPUT_ACT)
     p.add_argument("--schema", choices=["batch", "fixed"], default="batch",
                    help="'fixed' builds the model from the shared 2-node/4-edge schema instead of the first batch")

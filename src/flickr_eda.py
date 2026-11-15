@@ -43,7 +43,7 @@ warnings.filterwarnings("ignore")
 # =============================== CONFIG ====================================
 DATA_DIR = os.environ.get(
     "FLICKR_DIR",
-    "/content/drive/MyDrive/Colab Notebooks/PopularityPrediction/data/raw/flickr",
+    "/content/drive/MyDrive/Colab Notebooks/PopularityPrediction/data/generated/flickr",
 )
 if len(sys.argv) > 1 and os.path.isdir(sys.argv[1]):
     DATA_DIR = sys.argv[1]

@@ -1,175 +1,175 @@
 {
   "votes": {
-    "n": 3018197,
+    "n": 3032157,
     "stories": 3553,
     "voters": 139409,
-    "dup_pairs": 7299
+    "dup_pairs": 7333
   },
   "popularity": {
     "n": 3553,
-    "mean": 849.4784688995215,
-    "median": 528.0,
-    "p90": 1786.8000000000002,
-    "p99": 4824.040000000001,
-    "max": 24099.0,
-    "skew": 6.2889183544943394,
-    "gini": 0.4458364231356541,
-    "log_skew": 0.9946173601803685
+    "mean": 853.4075429214748,
+    "median": 522.0,
+    "p90": 1767.8000000000002,
+    "p99": 4759.6,
+    "max": 23855.0,
+    "skew": 6.455415519358434,
+    "gini": 0.454049090950124,
+    "log_skew": 0.9848315891501557
   },
   "early_signal": [
     {
       "window_h": 0.25,
-      "median_votes_in_window": 6.0,
-      "median_share_of_final": 0.010438413361169102,
-      "only_submitter_vote": "5.9%",
-      "spearman_vs_final": 0.004248464022002196,
-      "spearman_vs_remaining_votes": -0.010869397500758977
+      "median_votes_in_window": 7.0,
+      "median_share_of_final": 0.012345679012345678,
+      "only_submitter_vote": "0.9%",
+      "spearman_vs_final": 0.025099567883860172,
+      "spearman_vs_remaining_votes": 0.013351088318486661
     },
     {
       "window_h": 0.5,
-      "median_votes_in_window": 11.0,
-      "median_share_of_final": 0.019889502762430938,
-      "only_submitter_vote": "1.5%",
-      "spearman_vs_final": 0.036691582359859795,
-      "spearman_vs_remaining_votes": 0.013211278608713293
+      "median_votes_in_window": 12.0,
+      "median_share_of_final": 0.02044641395191661,
+      "only_submitter_vote": "0.1%",
+      "spearman_vs_final": 0.026692196272452964,
+      "spearman_vs_remaining_votes": 0.008851541050513738
     },
     {
       "window_h": 1.0,
-      "median_votes_in_window": 20.0,
-      "median_share_of_final": 0.03608247422680412,
-      "only_submitter_vote": "0.5%",
-      "spearman_vs_final": 0.062138809550428595,
-      "spearman_vs_remaining_votes": 0.026092262262398698
+      "median_votes_in_window": 19.0,
+      "median_share_of_final": 0.03461705537830105,
+      "only_submitter_vote": "0.0%",
+      "spearman_vs_final": 0.028992506305719597,
+      "spearman_vs_remaining_votes": 0.0018182149697537515
     },
     {
       "window_h": 2.0,
       "median_votes_in_window": 33.0,
-      "median_share_of_final": 0.06028368794326241,
-      "only_submitter_vote": "0.3%",
-      "spearman_vs_final": 0.09635550338045475,
-      "spearman_vs_remaining_votes": 0.036199666341983065
+      "median_share_of_final": 0.06005118949846927,
+      "only_submitter_vote": "0.0%",
+      "spearman_vs_final": -0.015127339405479098,
+      "spearman_vs_remaining_votes": -0.05790836328922182
     },
     {
       "window_h": 6.0,
-      "median_votes_in_window": 65.0,
-      "median_share_of_final": 0.13486005089058525,
-      "only_submitter_vote": "0.1%",
-      "spearman_vs_final": 0.16228668774525887,
-      "spearman_vs_remaining_votes": -0.10463149368026987
+      "median_votes_in_window": 134.0,
+      "median_share_of_final": 0.23716135219371853,
+      "only_submitter_vote": "0.0%",
+      "spearman_vs_final": 0.5429628951180457,
+      "spearman_vs_remaining_votes": 0.45774000819855715
     },
     {
       "window_h": 12.0,
-      "median_votes_in_window": 163.0,
-      "median_share_of_final": 0.3332079729221512,
+      "median_votes_in_window": 209.0,
+      "median_share_of_final": 0.41948731340768947,
       "only_submitter_vote": "0.0%",
-      "spearman_vs_final": 0.34840662144255513,
-      "spearman_vs_remaining_votes": -0.13335345812242652
+      "spearman_vs_final": 0.7593907327574672,
+      "spearman_vs_remaining_votes": 0.5990022760127355
     },
     {
       "window_h": 24.0,
-      "median_votes_in_window": 388.0,
-      "median_share_of_final": 0.8091603053435115,
+      "median_votes_in_window": 407.0,
+      "median_share_of_final": 0.8204840088033236,
       "only_submitter_vote": "0.0%",
-      "spearman_vs_final": 0.8029699110822199,
-      "spearman_vs_remaining_votes": 0.2948942708946281
+      "spearman_vs_final": 0.9728152800665691,
+      "spearman_vs_remaining_votes": 0.7770353995455193
     }
   ],
   "early_window_for_rho_0.8": 24.0,
   "split": {
-    "ks_D": 0.07860386203379524,
-    "ks_p": 0.008268413819914685,
-    "q1": 1245765981.0,
-    "q2": 1246147875.0
+    "ks_D": 0.048456853687957865,
+    "ks_p": 0.24469699413071322,
+    "q1": 1245774983.2,
+    "q2": 1246144311.6
   },
-  "cold_start_user_share": 0.16927683482766162,
+  "cold_start_user_share": 0.11147852743322642,
   "votes_per_user": {
     "n": 139409,
-    "mean": 21.649943690866444,
+    "mean": 21.75008069780287,
     "median": 4.0,
-    "p90": 45.0,
-    "p99": 287.0,
-    "max": 10526.0,
-    "skew": 26.103836192418836,
-    "gini": 0.7934229812208039
+    "p90": 48.0,
+    "p99": 337.0,
+    "max": 2740.0,
+    "skew": 7.424897926306248,
+    "gini": 0.7950225937219962
   },
   "out_degree": {
-    "n": 71366,
-    "mean": 24.264397612308382,
-    "median": 3.0,
-    "p90": 38.0,
-    "p99": 472.0,
-    "max": 995.0,
-    "skew": 6.786314313834863,
-    "gini": 0.835710426485692
+    "n": 71305,
+    "mean": 24.16261131757941,
+    "median": 5.0,
+    "p90": 48.0,
+    "p99": 440.9600000000064,
+    "max": 3616.0,
+    "skew": 7.542352614225191,
+    "gini": 0.7813582700220065
   },
   "in_degree": {
-    "n": 258217,
-    "mean": 6.706192853297807,
-    "median": 1.0,
-    "p90": 8.0,
-    "p99": 101.0,
-    "max": 12038.0,
-    "skew": 91.99257676240153,
-    "gini": 0.7869470261285448
+    "n": 259862,
+    "mean": 6.63011521499873,
+    "median": 2.0,
+    "p90": 13.0,
+    "p99": 72.0,
+    "max": 6268.0,
+    "skew": 63.24967364723801,
+    "gini": 0.7158589875094739
   },
-  "reciprocity": 0.21196740917493284,
-  "voters_in_graph": 0.5940362530396173,
-  "edges_after_train_cutoff": 0.0407483485432705,
+  "reciprocity": 0.1927965105649437,
+  "voters_in_graph": 0.8500025105983114,
+  "edges_after_train_cutoff": 0.04814689058949513,
   "exposure": {
-    "rate": 0.2393827088032332,
+    "rate": 0.4782309214481663,
     "best_direction": "dst_follows_src",
-    "rho_with_popularity": -0.8208765585761463
+    "rho_with_popularity": 0.46106038493568524
   },
   "feature_signal": [
     {
       "feature": "early_votes_1h",
-      "spearman_vs_log_final": 0.062138809550428595,
-      "spearman_vs_log_remaining": 0.026092262262398698
+      "spearman_vs_log_final": 0.028992506305719597,
+      "spearman_vs_log_remaining": 0.0018182149697537515
     },
     {
       "feature": "early_fol_sum",
-      "spearman_vs_log_final": -0.09054545034370089,
-      "spearman_vs_log_remaining": -0.12111057103691113
+      "spearman_vs_log_final": 0.027906905756623065,
+      "spearman_vs_log_remaining": 0.011653725969669381
     },
     {
       "feature": "early_fol_mean",
-      "spearman_vs_log_final": -0.26043999102738236,
-      "spearman_vs_log_remaining": -0.26062083334853103
+      "spearman_vs_log_final": 0.01938419748303949,
+      "spearman_vs_log_remaining": 0.015457584745292836
     },
     {
       "feature": "early_fol_max",
-      "spearman_vs_log_final": 0.00911212401442624,
-      "spearman_vs_log_remaining": -0.006777660816728126
+      "spearman_vs_log_final": 0.021542387089295522,
+      "spearman_vs_log_remaining": 0.012452969194944815
     },
     {
       "feature": "early_in_graph",
-      "spearman_vs_log_final": -0.17599132166321318,
-      "spearman_vs_log_remaining": -0.1714915917425359
+      "spearman_vs_log_final": 0.003959935170035148,
+      "spearman_vs_log_remaining": 0.008488322317668585
     },
     {
       "feature": "submitter_followers",
-      "spearman_vs_log_final": 0.02537603690524838,
-      "spearman_vs_log_remaining": 0.018826459400783205
+      "spearman_vs_log_final": 0.0296739486456782,
+      "spearman_vs_log_remaining": 0.02938705176625701
     },
     {
       "feature": "submitter_n_stories",
-      "spearman_vs_log_final": 0.05441795173333305,
-      "spearman_vs_log_remaining": 0.0447641794989588
+      "spearman_vs_log_final": 0.007999101236454526,
+      "spearman_vs_log_remaining": 0.008350612816452763
     },
     {
       "feature": "hour (eta^2)",
-      "spearman_vs_log_final": 0.011311974881446267,
-      "spearman_vs_log_remaining": 0.01182711803051612
+      "spearman_vs_log_final": 0.004731295286625398,
+      "spearman_vs_log_remaining": 0.004724377532426496
     },
     {
       "feature": "dow (eta^2)",
-      "spearman_vs_log_final": 0.013291872045612795,
-      "spearman_vs_log_remaining": 0.01478376140252403
+      "spearman_vs_log_final": 0.0012804127175725548,
+      "spearman_vs_log_remaining": 0.0013021933237779054
     }
   ],
   "graph": {
-    "users": 336225,
+    "users": 300540,
     "stories": 3553,
-    "total_edges": 7775153
+    "total_edges": 7794335
   }
 }

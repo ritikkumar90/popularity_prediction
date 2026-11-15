@@ -32,3 +32,23 @@ venv/
 # OS-generated files
 .DS_Store
 Thumbs.db
+
+%%writefile .gitignore
+# Datasets and Outputs
+data/
+digg_eda_output/
+flickr_eda_output/
+output/
+outputs/
+
+# Python caches and compiled files
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# Jupyter/Colab notebook checkpoints
+.ipynb_checkpoints/
+
+# OS generated files
+.DS_Store

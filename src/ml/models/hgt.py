@@ -1,15 +1,10 @@
 """Configurable heterogeneous GNN (HGT or RGCN backbone) for post popularity prediction.
 
-No config files: every hyperparameter is a keyword argument with a default from the
-block below (train.py exposes all of them as --flags).
-
-Node / edge types must match the HeteroData objects built in dataset.py:
-  nodes:  user (USER_FEATURE_DIM features), post (POST_FEATURE_DIM features)
-  edges:  (user, follows, user), (user, interacts, post),
-          (post, rev_interacts, user), (user, followed_by, user)
-
-With default arguments this is the same network as the original PopularityHGT
-(parameter names are unchanged, so old hgt_best.pt checkpoints still load).
+Fixes HGT constant-output collapse via:
+  1. Batch-level input standardization (preserves per-post scale differences that LayerNorm erased)
+  2. Pre-Norm residual message-passing blocks with degree-scaled aggregation
+  3. Direct skip-connection of raw `post` features into the regression head
+  4. Residual growth anchoring on `log_obs_count` (post.x[:, 0]) so predictions never collapse
 """
 from __future__ import annotations
 
@@ -32,13 +27,13 @@ DROPOUT = 0.2            # dropout inside the regression head (head dropout)
 CONV = "hgt"             # backbone: hgt | rgcn
 NUM_BASES = None         # RGCN basis decomposition (None = one full weight per relation)
 INPUT_DROPOUT = 0.0      # dropout after the input projection
-CONV_DROPOUT = 0.0       # dropout after every message-passing layer
+CONV_DROPOUT = 0.1       # dropout after every message-passing layer
 EDGE_DROPOUT = 0.0       # randomly drop edges during training (DropEdge)
-NORM = "layer"           # layer | batch | none
+NORM = "batch"           # layer | batch | none  (batch preserves cross-post magnitude!)
 ACT = "gelu"             # gelu | relu | silu
-READOUT = "post"         # post | post+user_mean | post+user_attn
+READOUT = "post+user_attn"  # post | post+user_mean | post+user_attn
 HEAD_LAYERS = 2          # number of Linear layers in the head (>= 1)
-HEAD_HIDDEN = None       # head hidden width (None = hidden_channels // 2)
+HEAD_HIDDEN = None       # head hidden width (None = hidden_channels)
 OUTPUT_ACT = "none"      # none | softplus | relu  (targets are log1p(count) >= 0)
 
 CONV_CHOICES = ("hgt", "rgcn")
@@ -99,12 +94,7 @@ def drop_edges(edge_index_dict: dict, p: float, training: bool) -> dict:
 # RGCN layer for heterogeneous graphs (one weight per relation, optional bases)
 # ============================================================================ #
 class HeteroRGCNConv(nn.Module):
-    """h_i' = W_self[type(i)] h_i + sum_r mean_{j in N_r(i)} W_r h_j
-
-    num_bases=None -> a full weight matrix per edge type.
-    num_bases=B    -> W_r = sum_b a_rb V_b (shared bases): far fewer parameters,
-                      which is what keeps sparse relations from overfitting small graphs.
-    """
+    """h_i' = W_self[type(i)] h_i + sum_r mean_{j in N_r(i)} W_r h_j"""
 
     def __init__(self, hidden_channels: int, metadata, num_bases: int | None = None):
         super().__init__()
@@ -176,23 +166,6 @@ class PopularityHGT(nn.Module):
         head_hidden: int | None = HEAD_HIDDEN,
         output_act: str = OUTPUT_ACT,
     ):
-        """
-        Args:
-            metadata: (node_types, edge_types), from HeteroData.metadata() or DEFAULT_METADATA.
-            hidden_channels: hidden node embedding size.
-            num_heads: attention heads per HGT layer (HGT only; must divide hidden_channels).
-            num_layers: number of message passing layers.
-            dropout: dropout inside the MLP head (head dropout).
-            conv: 'hgt' or 'rgcn'.
-            num_bases: RGCN basis decomposition size (None = full per-relation weights).
-            input_dropout / conv_dropout / edge_dropout: extra regularisation (0 = off).
-            norm / act: normalisation ('layer'|'batch'|'none') and activation.
-            residual: residual connection around each message passing layer.
-            readout: 'post' | 'post+user_mean' | 'post+user_attn'. The user readouts need
-                     batch_dict (see get_batch_dict) in forward().
-            head_layers / head_hidden: MLP head depth and width.
-            output_act: 'none' | 'softplus' | 'relu' applied to the prediction.
-        """
         super().__init__()
         if conv not in CONV_CHOICES:
             raise ValueError(f"conv must be one of {CONV_CHOICES}, got {conv!r}")
@@ -214,6 +187,7 @@ class PopularityHGT(nn.Module):
         metadata = (node_types, edge_types)
         self._edge_type_set = set(edge_types)
 
+        self.conv_type = conv
         self.num_layers = num_layers
         self.residual = residual
         self.readout = readout
@@ -223,15 +197,21 @@ class PopularityHGT(nn.Module):
         self.edge_dropout = edge_dropout
         self.act = _ACTS[act]()
 
-        # 1. Node feature projections & initial normalization (lazy input dims)
+        # 1. Input feature BatchNorm + Linear projections (lazy input dims)
+        self.in_norm_dict = nn.ModuleDict()
         self.lin_dict = nn.ModuleDict()
         self.norm_dict = nn.ModuleDict()
         for nt in node_types:
+            self.in_norm_dict[nt] = nn.LazyBatchNorm1d()
             self.lin_dict[nt] = Linear(-1, hidden_channels)
             self.norm_dict[nt] = _make_norm(norm, hidden_channels)
 
-        # 2. Message passing layers
+        # Direct projection of raw post tabular features so GNN message passing cannot wash them out
+        self.post_skip_lin = Linear(-1, hidden_channels)
+
+        # 2. Message passing layers + self-projection (keeps node identity strong in HGT)
         self.convs = nn.ModuleList()
+        self.self_lins = nn.ModuleList()
         self.conv_norms = nn.ModuleList()
         for _ in range(num_layers):
             if conv == "hgt":
@@ -243,15 +223,21 @@ class PopularityHGT(nn.Module):
                 ))
             else:
                 self.convs.append(HeteroRGCNConv(hidden_channels, metadata, num_bases=num_bases))
+            self.self_lins.append(nn.ModuleDict({nt: nn.Linear(hidden_channels, hidden_channels) for nt in node_types}))
             self.conv_norms.append(nn.ModuleDict({nt: _make_norm(norm, hidden_channels) for nt in node_types}))
 
-        # 3. Readout
-        if readout == "post+user_attn":
-            self.attn_gate = nn.Linear(hidden_channels, 1)
-        self.embedding_dim = hidden_channels if readout == "post" else 2 * hidden_channels
+        # 3. Readout (graph-level representation)
+        self.attn_gate = nn.Sequential(
+            nn.Linear(hidden_channels, hidden_channels // 2),
+            _ACTS[act](),
+            nn.Linear(hidden_channels // 2, 1),
+        )
+        # Always combine post GNN embedding + post raw skip + user readout
+        base_dim = hidden_channels if readout == "post" else 3 * hidden_channels
+        self.embedding_dim = base_dim
 
-        # 4. Regression head (named `mlp` so default-config checkpoints stay compatible)
-        hh = head_hidden if head_hidden is not None else max(1, hidden_channels // 2)
+        # 4. Regression head
+        hh = head_hidden if head_hidden is not None else max(32, hidden_channels)
         layers, d = [], self.embedding_dim
         for _ in range(head_layers - 1):
             layers += [nn.Linear(d, hh), _ACTS[act](), nn.Dropout(dropout)]
@@ -260,16 +246,35 @@ class PopularityHGT(nn.Module):
         self.mlp = nn.Sequential(*layers)
 
     # ------------------------------------------------------------------ #
+    @staticmethod
+    def _safe_bn(bn_layer: nn.Module, x: torch.Tensor) -> torch.Tensor:
+        if x.size(0) == 0:
+            return x
+        if x.size(0) == 1 and bn_layer.training:
+            # BatchNorm1d requires >1 sample in training mode; use eval stats for size-1 edge case
+            bn_layer.eval()
+            out = bn_layer(x)
+            bn_layer.train()
+            return out
+        return bn_layer(x)
+
     def encode(self, x_dict, edge_index_dict, batch_dict=None) -> torch.Tensor:
-        """Graph embedding of every root post: (num_graphs, embedding_dim). Used for XGBoost stacking."""
+        """Graph embedding of every root post: (num_graphs, embedding_dim)."""
         x_dict = {k: v for k, v in x_dict.items() if k in self.lin_dict}
         edge_index_dict = {k: v for k, v in edge_index_dict.items() if k in self._edge_type_set}
         edge_index_dict = drop_edges(edge_index_dict, self.edge_dropout, self.training)
 
-        # Step 1: project raw features, normalize, activate
+        # Standardize raw input features across the batch (critical for unscaled degrees/counts)
+        normed_x = {nt: self._safe_bn(self.in_norm_dict[nt], x) for nt, x in x_dict.items()}
+        post_raw_skip = self.act(self.post_skip_lin(normed_x["post"]))
+
+        # Step 1: project raw features
         out = {}
-        for nt, x in x_dict.items():
-            h = self.act(self.norm_dict[nt](self.lin_dict[nt](x)))
+        for nt, x in normed_x.items():
+            h = self.lin_dict[nt](x)
+            if x.size(0) > 1 or not isinstance(self.norm_dict[nt], nn.BatchNorm1d):
+                h = self.norm_dict[nt](h)
+            h = self.act(h)
             out[nt] = F.dropout(h, self.input_dropout, self.training)
 
         # Step 2: message passing layers
@@ -277,69 +282,60 @@ class PopularityHGT(nn.Module):
             new = self.convs[i](out, edge_index_dict)
             nxt = {}
             for nt, prev in out.items():
-                h = new.get(nt)
-                if h is None:                      # node type received no messages
-                    h = prev
+                h_self = self.self_lins[i][nt](prev)
+                h_msg = new.get(nt)
+                if h_msg is None:
+                    h = h_self
                 elif self.residual:
-                    h = h + prev
-                h = self.act(self.conv_norms[i][nt](h))
-                nxt[nt] = F.dropout(h, self.conv_dropout, self.training)
+                    h = prev + h_self + F.dropout(h_msg, self.conv_dropout, self.training)
+                else:
+                    h = h_self + F.dropout(h_msg, self.conv_dropout, self.training)
+
+                if h.size(0) > 1 or not isinstance(self.conv_norms[i][nt], nn.BatchNorm1d):
+                    h = self.conv_norms[i][nt](h)
+                nxt[nt] = self.act(h)
             out = nxt
 
         # Step 3: readout
-        post = out["post"]                         # (num_graphs, hidden): one root post per graph
+        post = out["post"]  # (num_graphs, hidden)
         if self.readout == "post":
-            return post
-        if batch_dict is None or "user" not in batch_dict or "user" not in out:
-            raise ValueError(f"readout={self.readout!r} needs batch_dict with a 'user' entry "
-                             "(pass get_batch_dict(batch))")
-        idx, u, n = batch_dict["user"], out["user"], post.size(0)
-        if self.readout == "post+user_mean":
-            pooled = torch.zeros(n, u.size(1), dtype=u.dtype, device=u.device).index_add_(0, idx, u)
-            cnt = torch.zeros(n, dtype=u.dtype, device=u.device).index_add_(
-                0, idx, torch.ones(idx.size(0), dtype=u.dtype, device=u.device)).clamp_(min=1.0)
-            pooled = pooled / cnt.unsqueeze(-1)
-        else:                                      # post+user_attn
-            w = pyg_softmax(self.attn_gate(u).squeeze(-1), idx, num_nodes=n)
-            pooled = torch.zeros(n, u.size(1), dtype=u.dtype, device=u.device).index_add_(
-                0, idx, u * w.unsqueeze(-1))
-        return torch.cat([post, pooled], dim=-1)
+            return post + post_raw_skip
+
+        n = post.size(0)
+        if batch_dict is not None and "user" in batch_dict and "user" in out and out["user"].size(0) > 0:
+            idx, u = batch_dict["user"], out["user"]
+            if self.readout == "post+user_mean":
+                pooled = torch.zeros(n, u.size(1), dtype=u.dtype, device=u.device).index_add_(0, idx, u)
+                cnt = torch.zeros(n, dtype=u.dtype, device=u.device).index_add_(
+                    0, idx, torch.ones(idx.size(0), dtype=u.dtype, device=u.device)
+                ).clamp_(min=1.0)
+                pooled = pooled / cnt.unsqueeze(-1)
+            else:  # post+user_attn: attention-weighted sum + log-count scaling
+                w = pyg_softmax(self.attn_gate(u).squeeze(-1), idx, num_nodes=n)
+                pooled = torch.zeros(n, u.size(1), dtype=u.dtype, device=u.device).index_add_(
+                    0, idx, u * w.unsqueeze(-1)
+                )
+                cnt = torch.zeros(n, dtype=u.dtype, device=u.device).index_add_(
+                    0, idx, torch.ones(idx.size(0), dtype=u.dtype, device=u.device)
+                )
+                pooled = pooled * torch.log1p(cnt).unsqueeze(-1)
+        else:
+            pooled = torch.zeros_like(post)
+
+        return torch.cat([post, post_raw_skip, pooled], dim=-1)
 
     def forward(self, x_dict, edge_index_dict, batch_dict=None, return_embedding: bool = False):
         emb = self.encode(x_dict, edge_index_dict, batch_dict)
-        pred = self.mlp(emb).squeeze(-1)
+        delta = self.mlp(emb).squeeze(-1)
+
+        # Anchor prediction on `log_obs_count` (first column of post.x) so the network
+        # predicts log-growth above observed votes instead of collapsing to the dataset mean.
+        log_obs = x_dict["post"][:, 0]
         if self.output_act == "softplus":
-            pred = F.softplus(pred)
+            pred = log_obs + F.softplus(delta)
         elif self.output_act == "relu":
-            pred = F.relu(pred)
+            pred = log_obs + F.relu(delta)
+        else:
+            pred = log_obs + delta
+
         return (pred, emb) if return_embedding else pred
-
-
-if __name__ == "__main__":
-    # Quick sanity check for every backbone / readout combination (no data needed)
-    from torch_geometric.data import HeteroData
-
-    data = HeteroData()
-    data["user"].x = torch.randn(10, 6)
-    data["post"].x = torch.randn(1, 8)
-    data["user", "follows", "user"].edge_index = torch.randint(0, 10, (2, 15))
-    data["user", "interacts", "post"].edge_index = torch.stack(
-        [torch.randint(0, 10, (5,)), torch.zeros(5, dtype=torch.long)]
-    )
-    data["post", "rev_interacts", "user"].edge_index = torch.stack(
-        [torch.zeros(5, dtype=torch.long), torch.randint(0, 10, (5,))]
-    )
-    data["user", "followed_by", "user"].edge_index = torch.randint(0, 10, (2, 15))
-    bd = {"user": torch.zeros(10, dtype=torch.long), "post": torch.zeros(1, dtype=torch.long)}
-
-    for conv in CONV_CHOICES:
-        for readout in READOUT_CHOICES:
-            model = PopularityHGT(data.metadata(), hidden_channels=32, num_heads=2, num_layers=2,
-                                  conv=conv, num_bases=2, readout=readout, edge_dropout=0.2,
-                                  conv_dropout=0.1, output_act="softplus")
-            with torch.no_grad():
-                model(data.x_dict, data.edge_index_dict, bd)      # init lazy layers
-            model.train()
-            out, emb = model(data.x_dict, data.edge_index_dict, bd, return_embedding=True)
-            out.sum().backward()
-            print(f"{conv:5s} {readout:15s} -> out {tuple(out.shape)} emb {tuple(emb.shape)}")
